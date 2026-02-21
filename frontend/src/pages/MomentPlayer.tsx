@@ -71,25 +71,12 @@ export default function MomentPlayer() {
         {/* Album art */}
         <AnimateIn className="mb-8 relative group cursor-pointer">
           <div className="absolute -inset-1 bg-gradient-to-r from-primary to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
-          <div className="relative w-56 h-56 sm:w-72 sm:h-72 rounded-2xl overflow-hidden shadow-2xl bg-black/40 backdrop-blur-md border border-white/10 flex items-center justify-center">
-            {/* Abstract bg image */}
-            <div
-              className="absolute inset-0 bg-cover bg-center opacity-80 mix-blend-overlay"
-              style={{
-                backgroundImage:
-                  "linear-gradient(135deg, #1a0533 0%, #0d1b3e 50%, #1a0533 100%)",
-              }}
+          <div className="relative w-56 h-56 sm:w-72 sm:h-72 rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+            <img
+              src="https://images.unsplash.com/photo-1501436513145-30f24e19fcc8?w=600&h=600&fit=crop"
+              alt="Rainy Afternoon in Taipei"
+              className="w-full h-full object-cover"
             />
-            {/* Visualizer bars */}
-            <div className="flex items-end justify-center gap-1.5 h-32 w-full px-10 z-10">
-              {[12, 20, 16, 24, 14, 28, 10].map((h, i) => (
-                <div
-                  key={i}
-                  className={`w-2 bg-white/80 rounded-full ${isPlaying ? "animate-pulse" : ""}`}
-                  style={{ height: h, animationDelay: `${i * 0.1}s` }}
-                />
-              ))}
-            </div>
           </div>
         </AnimateIn>
 
