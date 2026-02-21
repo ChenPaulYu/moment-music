@@ -28,6 +28,10 @@ User Input (text, image, audio, motion, location)
   - summary: poetic narrative of the moment
   - suggested_prompt: structured music generation prompt
     ↓
+[Album Cover Generation] (GPT-5.2 Image Generation)
+  Input: mood_keywords, summary, suggested_prompt
+  Output: AI-generated cover art image (1024×1024)
+    ↓
 [Audio Generation]
   ├── Instrumental → Stable Audio 2 (text2audio or audio2audio)
   ├── Song → ACE-STEP (vocals over instrumental) [Phase 3]
@@ -75,6 +79,32 @@ BPM: [optional] | Additional descriptors: [texture, style]
 - `weather_music_system.txt` — agent role definition
 - `weather_music_base.txt` — output structure and instructions
 - `image_caption.txt` — captioning system prompt
+
+### OpenAI GPT-5.2 (Album Cover Generation)
+
+**Purpose:** Generate unique album cover art for each soundscape based on mood interpretation output.
+
+**Input:** The mood interpretation agent's output — `mood_keywords`, `summary`, and `suggested_prompt` — is used to construct an image generation prompt.
+
+**Process:**
+1. Mood keywords and summary are combined into an art direction prompt
+2. Prompt is styled toward abstract, atmospheric album art (not photorealistic)
+3. GPT-5.2 image generation produces a 1024×1024 cover image
+4. Image is stored alongside the generated audio
+
+**Output:** 1024×1024 PNG image used as cover art in MomentPlayer and Library card thumbnails.
+
+**Prompt Strategy:**
+- Abstract and evocative visual style matching the mood
+- Color palette derived from mood keywords
+- Avoids text/typography in generated images
+- Consistent with the dark, atmospheric aesthetic of the app
+
+**Used In:**
+- `MomentPlayer` — album art display with glow border
+- `Library` — soundscape card thumbnails
+
+---
 
 ### Stability AI — Stable Audio 2
 

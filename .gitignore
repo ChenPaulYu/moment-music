@@ -93,6 +93,12 @@ test-results.log
 frontend/playwright-report/
 frontend/test-results/
 
+# Frontend build artifacts
+*.tsbuildinfo
+
+# Demo audio assets
+frontend/public/*.mp3
+
 # Worktrees
 .worktrees/
 
