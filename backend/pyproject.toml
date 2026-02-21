@@ -1,0 +1,15 @@
+[project]
+name = "moment-music-backend"
+version = "0.1.0"
+description = "Moment Music — AI-powered generative music backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.12",
+    "uvicorn[standard]>=0.34.2",
+    "pydantic-ai>=0.1.8",
+    "pydantic-ai-slim[openai]>=0.1.8",
+    "requests>=2.32.3",
+    "python-dotenv>=1.0.1",
+    "python-multipart>=0.0.20",
+]

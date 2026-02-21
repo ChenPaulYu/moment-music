@@ -48,9 +48,9 @@ export default function ListenMode() {
       </AnimateIn>
 
       {/* Mic circle */}
-      <AnimateIn delay={200} className="relative flex items-center justify-center mb-8">
+      <AnimateIn delay={200} className="relative flex items-center justify-center mb-8 w-64 h-64 md:w-80 md:h-80">
         {/* SVG progress ring */}
-        <svg className="absolute w-64 h-64 md:w-80 md:h-80 -rotate-90" viewBox="0 0 320 320">
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 320 320">
           <circle
             cx="160"
             cy="160"

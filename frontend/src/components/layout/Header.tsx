@@ -22,7 +22,7 @@ export default function Header() {
 
   const dropdownItems = [
     { label: "Library", to: "/library", icon: "library_music" },
-    { label: "Profile", to: "/profile", icon: "person" },
+    { label: "Setup", to: "/setup", icon: "settings" },
   ];
 
   useEffect(() => {
@@ -79,16 +79,11 @@ export default function Header() {
               menuOpen && "ring-primary/50 bg-primary/40"
             )}
           >
-            JD
+            <MaterialIcon icon="menu" size={18} />
           </button>
 
           {menuOpen && (
             <div className="absolute right-0 top-full mt-3 w-52 glass-panel rounded-xl border border-white/10 overflow-hidden shadow-2xl shadow-black/40 animate-fade-in-up">
-              <div className="px-4 py-3 border-b border-white/5">
-                <p className="text-sm font-semibold text-white">Alex Rivera</p>
-                <p className="text-xs text-white/40">@arivera_music</p>
-              </div>
-
               {/* Mode nav (mobile only) */}
               <nav className="md:hidden py-1.5 border-b border-white/5">
                 {topNav.map((item) => (

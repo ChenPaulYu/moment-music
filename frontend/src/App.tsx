@@ -6,7 +6,7 @@ import ListenMode from "@/pages/ListenMode";
 import MoveMode from "@/pages/MoveMode";
 import BeMode from "@/pages/BeMode";
 import MomentPlayer from "@/pages/MomentPlayer";
-import Profile from "@/pages/Profile";
+import Setup from "@/pages/Setup";
 
 export default function App() {
   return (
@@ -19,7 +19,7 @@ export default function App() {
         <Route path="/move" element={<MoveMode />} />
         <Route path="/be" element={<BeMode />} />
         <Route path="/player" element={<MomentPlayer />} />
-        <Route path="/profile" element={<Profile />} />
+        <Route path="/setup" element={<Setup />} />
       </Routes>
     </BrowserRouter>
   );
