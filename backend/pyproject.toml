@@ -3,13 +3,46 @@ name = "moment-music-backend"
 version = "0.1.0"
 description = "Moment Music — AI-powered generative music backend"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.115.12",
     "uvicorn[standard]>=0.34.2",
-    "pydantic-ai>=0.1.8",
-    "pydantic-ai-slim[openai]>=0.1.8",
+    "openai>=1.82.0",
     "requests>=2.32.3",
     "python-dotenv>=1.0.1",
     "python-multipart>=0.0.20",
+    "torch>=2.0",
+    "diffusers>=0.30",
+    "transformers>=4.40,<4.58",
+    "soundfile>=0.12",
+    "heartlib @ git+https://github.com/HeartMuLa/heartlib.git",
+    "ace-step @ git+https://github.com/ace-step/ACE-Step-1.5.git",
+    "qwen-tts @ git+https://github.com/QwenLM/Qwen3-TTS.git",
 ]
+
+[tool.uv]
+# Override exact pins from heartlib/ace-step so they can coexist
+override-dependencies = [
+    # heartlib pins torch==2.4.1, ace-step wants >=2.9.1 on macOS — loosen both
+    "torch>=2.4",
+    "torchaudio>=2.4",
+    "torchvision>=0.19",
+    "torchao>=0.9",
+    # heartlib pins transformers==4.57.0, qwen-tts needs >=4.57.3
+    "transformers==4.57.3",
+    # heartlib pins exact versions — loosen for compatibility
+    "numpy>=2.0",
+    "torchtune>=0.4",
+    "tqdm>=4.67",
+    "traitlets>=5.7",
+    "tokenizers>=0.22",
+    "accelerate>=1.12",
+    "bitsandbytes>=0.49",
+    "vector-quantize-pytorch>=1.27",
+    "modelscope>=1.33",
+    # datasets 2.14 incompatible with pyarrow 23+ (PyExtensionType removed)
+    "datasets>=3.0",
+]
+
+# Ignore ace-step's custom CUDA PyTorch indexes and local nano-vllm source
+no-sources-package = ["ace-step"]
