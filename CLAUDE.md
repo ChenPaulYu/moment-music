@@ -248,7 +248,7 @@ See `docs/design-guide.md` for visual design system.
 | `/listen` | ListenMode | Mic capture → music (with audio preview) |
 | `/move` | MoveMode | Motion capture → music |
 | `/be` | BeMode | Environment → music |
-| `/player` | MomentPlayer | Audio playback + details |
+| `/player/:jobId` | MomentPlayer | Audio playback + details (unique URL per generation) |
 | `/library` | Library | Saved soundscapes |
 | `/setup` | Setup | Engine selection + API keys |
 | `/prompts` | Prompts | Style prompt customization (global + per-mode) |

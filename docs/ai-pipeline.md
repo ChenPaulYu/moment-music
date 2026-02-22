@@ -72,6 +72,9 @@ git lfs install
 git clone https://huggingface.co/ACE-Step/Ace-Step1.5 ace_step
 ln -s ace_step checkpoints    # symlink expected by ACE-STEP loader
 
+# ACE-STEP 5Hz LM (optional, improves quality via chain-of-thought reasoning)
+git clone https://huggingface.co/ACE-Step/acestep-5Hz-lm-1.7B checkpoints/acestep-5Hz-lm-1.7B
+
 # Qwen3-TTS (narration voice) — required for Narration output
 git clone https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice qwen3_tts
 
@@ -88,11 +91,26 @@ Each engine checks availability at startup. Missing models make that engine unav
 
 | Engine | Type Enum | Hardware | Outputs | Notes |
 |--------|-----------|----------|---------|-------|
-| **ACE-STEP** | `ace_step` | MPS / CUDA / CPU | Instrumental, Song, Narration BG | Default engine, works on Apple Silicon |
+| **ACE-STEP** | `ace_step` | MPS / CUDA / CPU | Instrumental, Song, Narration BG | Default engine, works on Apple Silicon. Optional 5Hz LM for chain-of-thought reasoning (MLX on Apple Silicon, PyTorch elsewhere). |
 | **HeartMuLa** | `heart_mula` | CUDA / MPS (36GB+) | Song (lyrics-conditioned) | 3B model, needs large VRAM |
 | **Stable Audio Open** | `stable_audio_open` | MPS / CUDA / CPU | Instrumental | Requires `HF_TOKEN` |
 | **Stable Audio API** | `stable_audio_api` | None (cloud) | Instrumental | Requires `STABILITY_API_KEY` |
 | **Qwen3-TTS** | `qwen3_tts` | MPS / CUDA / CPU | Narration voice | Text-to-speech, local |
+
+### ACE-STEP LLM Backend (Optional)
+
+ACE-STEP has a two-phase pipeline:
+
+1. **LM phase** (optional) — A 1.7B Qwen3-based model generates chain-of-thought metadata (BPM, key, time signature, enriched caption) and semantic audio codes that condition the diffusion.
+2. **DiT phase** — Diffusion transformer generates audio, conditioned on text + optional codes from LM.
+
+When the `acestep-5Hz-lm-1.7B` model is present in `backend/models/checkpoints/` and `ACE_STEP_THINKING=true`, the LM phase runs before diffusion. On Apple Silicon, LM inference uses MLX (`mlx-lm`) for native acceleration (~10 tok/s). On CUDA/CPU, it falls back to PyTorch.
+
+The LM phase adds ~34 seconds but improves musical coherence and prompt adherence. It is **off by default** (`ACE_STEP_THINKING=false`) for faster iteration.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ACE_STEP_THINKING` | `false` | Enable LLM chain-of-thought before diffusion |
 
 ### Device Detection
 
@@ -228,6 +246,9 @@ HEARTMULA_DEVICE=              # auto-detected if not set
 HEARTMULA_DTYPE=float16
 HEARTMULA_LAZY_LOAD=true
 HEARTMULA_VERSION=3B
+
+# Optional — ACE-STEP LLM thinking
+ACE_STEP_THINKING=false       # true = better quality (+~34s), false = faster (DiT only)
 
 # Optional — generation defaults
 DEFAULT_ENGINE=ace_step

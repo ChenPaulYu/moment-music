@@ -173,6 +173,7 @@ Users can customize AI generation style at `/prompts`:
 | `HEARTMULA_DEVICE` | No | Override device for HeartMuLa |
 | `HEARTMULA_DTYPE` | No | Override dtype for HeartMuLa |
 | `HEARTMULA_LAZY_LOAD` | No | Lazy-load HeartMuLa components (`true`) |
+| `ACE_STEP_THINKING` | No | Enable LLM chain-of-thought before diffusion (`false`) |
 
 ## Development
 

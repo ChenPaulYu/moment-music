@@ -264,7 +264,7 @@ const startPolling = useCallback((jid: string) => {
             if (job.status === "completed") {
                 clearInterval(pollRef.current);
                 clearActiveJob();
-                navigate("/player", { state: job.result });
+                navigate(`/player/${jid}`, { state: job.result });
             } else if (job.status === "failed") {
                 clearInterval(pollRef.current);
                 clearActiveJob();

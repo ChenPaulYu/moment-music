@@ -233,7 +233,7 @@ Multipart form data:
 | `/listen` | ListenMode | Ambient audio capture with preview → music |
 | `/move` | MoveMode | Device motion capture → music |
 | `/be` | BeMode | Environmental context → music |
-| `/player` | MomentPlayer | Audio playback + album art + details |
+| `/player/:jobId` | MomentPlayer | Audio playback + album art + details (unique URL per generation) |
 | `/library` | Library | Saved soundscapes collection |
 | `/setup` | Setup | Engine selection + API key management |
 | `/prompts` | Prompts | Style prompt customization (global + per-mode) |
