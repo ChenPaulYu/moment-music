@@ -40,7 +40,35 @@
    cd frontend && npm install && cd ..
    ```
 
-3. **Configure API keys:**
+3. **Download AI models:**
+
+   Local music engines require model checkpoints in `backend/models/`. Download at least ACE-STEP (the default engine):
+
+   ```bash
+   # ACE-STEP (default engine, ~4GB) — required
+   cd backend/models
+   git lfs install
+   git clone https://huggingface.co/ACE-Step/Ace-Step1.5 ace_step
+   # Create symlink expected by ACE-STEP loader
+   ln -s ace_step checkpoints
+   ```
+
+   Optional engines:
+
+   ```bash
+   # HeartMuLa (lyrics-conditioned, ~6GB, needs 36GB+ VRAM to run)
+   git clone https://huggingface.co/HeartMuLa/HeartMuLaGen heart_mula
+
+   # Stable Audio Open (~4GB, needs HF_TOKEN)
+   git clone https://huggingface.co/stabilityai/stable-audio-open-1.0 stable_audio
+
+   # Qwen3-TTS (narration voice, ~4GB) — required for Narration output
+   git clone https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice qwen3_tts
+   ```
+
+   > Models are gitignored. Each engine checks availability at startup — missing models simply make that engine unavailable.
+
+4. **Configure API keys:**
 
    Create `backend/.env`:
    ```env
@@ -55,7 +83,7 @@
 
    API keys can also be configured in the browser at `/setup`.
 
-4. **Start the app:**
+5. **Start the app:**
    ```bash
    ./dev.sh
    ```
@@ -66,7 +94,7 @@
    ./run-frontend.sh    # http://localhost:5173
    ```
 
-5. **Open** http://localhost:5173
+6. **Open** http://localhost:5173
 
 ## Architecture
 

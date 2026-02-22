@@ -60,6 +60,30 @@ class AudioEngine(ABC):
 
 Engines are lazy-loaded and cached. After each generation, `unload()` is called to free GPU memory for the next engine.
 
+### Model Downloads
+
+Local engines require model checkpoints in `backend/models/` (gitignored). Download before running the backend:
+
+```bash
+cd backend/models
+git lfs install
+
+# ACE-STEP (default engine) — required
+git clone https://huggingface.co/ACE-Step/Ace-Step1.5 ace_step
+ln -s ace_step checkpoints    # symlink expected by ACE-STEP loader
+
+# Qwen3-TTS (narration voice) — required for Narration output
+git clone https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice qwen3_tts
+
+# HeartMuLa (lyrics-conditioned, needs 36GB+ VRAM) — optional
+git clone https://huggingface.co/HeartMuLa/HeartMuLaGen heart_mula
+
+# Stable Audio Open (needs HF_TOKEN) — optional
+git clone https://huggingface.co/stabilityai/stable-audio-open-1.0 stable_audio
+```
+
+Each engine checks availability at startup. Missing models make that engine unavailable (not an error).
+
 ### Available Engines
 
 | Engine | Type Enum | Hardware | Outputs | Notes |

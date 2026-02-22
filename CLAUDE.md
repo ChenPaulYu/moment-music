@@ -112,29 +112,40 @@ Users customize AI generation style via the Prompts page (`/prompts`):
 
 ## Development Setup
 
-**Backend (uv — always use uv, never pip):**
+**1. Install dependencies:**
 ```bash
-cd backend
-uv sync
-uv run uvicorn app.main:app --reload --port 8000 --loop asyncio
+cd backend && uv sync && cd ..
+cd frontend && npm install && cd ..
 ```
 
-**Frontend:**
+**2. Download AI models** into `backend/models/` (gitignored):
 ```bash
-cd frontend
-npm install
-npm run dev
+cd backend/models
+git lfs install
+
+# ACE-STEP (default engine) — required
+git clone https://huggingface.co/ACE-Step/Ace-Step1.5 ace_step
+ln -s ace_step checkpoints    # symlink expected by ACE-STEP loader
+
+# Qwen3-TTS (narration voice) — required for Narration output
+git clone https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice qwen3_tts
+
+# HeartMuLa (lyrics-conditioned, needs 36GB+ VRAM) — optional
+git clone https://huggingface.co/HeartMuLa/HeartMuLaGen heart_mula
+
+# Stable Audio Open (needs HF_TOKEN) — optional
+git clone https://huggingface.co/stabilityai/stable-audio-open-1.0 stable_audio
 ```
 
-**Both (recommended):**
-```bash
-./dev.sh
-```
+Each engine checks model availability at startup. Missing models make that engine unavailable (not an error).
 
-**Individual scripts:**
+**3. Configure API keys** — create `backend/.env` (see Environment Variables below).
+
+**4. Run the app:**
 ```bash
-./run-backend.sh     # backend only
-./run-frontend.sh    # frontend only
+./dev.sh               # both frontend + backend
+./run-backend.sh       # backend only
+./run-frontend.sh      # frontend only
 ```
 
 ---
