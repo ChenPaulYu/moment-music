@@ -1,4 +1,5 @@
 import asyncio
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,12 +20,17 @@ router = APIRouter()
 
 AUDIO_DIR = Path(__file__).resolve().parent.parent.parent / "audio"
 
+# Configurable defaults from .env
+DEFAULT_ENGINE = os.getenv("DEFAULT_ENGINE", EngineType.ACE_STEP.value)
+DEFAULT_DURATION = int(os.getenv("DEFAULT_DURATION", "30"))
+DEFAULT_OUTPUT_TYPE = os.getenv("DEFAULT_OUTPUT_TYPE", "instrumental")
+
 
 class GenerateRequest(BaseModel):
     location: str
-    engine: str = EngineType.ACE_STEP.value
-    duration: int = 20
-    output_type: str = "instrumental"  # "instrumental" | "song" | "narration"
+    engine: str = DEFAULT_ENGINE
+    duration: int = DEFAULT_DURATION
+    output_type: str = DEFAULT_OUTPUT_TYPE  # "instrumental" | "song" | "narration"
 
 
 def _uid() -> str:
@@ -138,7 +144,7 @@ async def generate(req: GenerateRequest):
 
 
 async def _handle_instrumental(req, weather, engine, lat, lon):
-    interpretation = await interpret_weather_to_music_prompt(weather)
+    interpretation = await interpret_weather_to_music_prompt(weather, duration=req.duration)
 
     filename = f"{_uid()}.mp3"
     output_path = AUDIO_DIR / filename
@@ -161,7 +167,7 @@ async def _handle_instrumental(req, weather, engine, lat, lon):
 
 
 async def _handle_song(req, weather, engine, lat, lon):
-    interpretation = await interpret_weather_to_song(weather)
+    interpretation = await interpret_weather_to_song(weather, duration=req.duration)
 
     filename = f"{_uid()}.mp3"
     output_path = AUDIO_DIR / filename

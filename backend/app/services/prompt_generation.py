@@ -58,10 +58,13 @@ def _build_weather_context(weather: dict) -> str:
     """
 
 
-async def interpret_weather_to_music_prompt(weather: dict) -> WeatherInterpretation:
+async def interpret_weather_to_music_prompt(
+    weather: dict, duration: int = 30
+) -> WeatherInterpretation:
     """Interpret weather data into an instrumental music prompt."""
     system_prompt = load_prompt("weather_music_system.txt")
-    user_prompt = _build_weather_context(weather) + "\n\n" + load_prompt("weather_music_base.txt")
+    base_prompt = load_prompt("weather_music_base.txt").replace("{duration}", str(duration))
+    user_prompt = _build_weather_context(weather) + "\n\n" + base_prompt
 
     response = await _get_client().beta.chat.completions.parse(
         model="gpt-5.2",
@@ -96,10 +99,13 @@ async def interpret_weather_to_narration(
     return response.choices[0].message.parsed
 
 
-async def interpret_weather_to_song(weather: dict) -> SongInterpretation:
+async def interpret_weather_to_song(
+    weather: dict, duration: int = 30
+) -> SongInterpretation:
     """Interpret weather data into song lyrics + music style tags."""
     system_prompt = load_prompt("weather_song_system.txt")
-    user_prompt = _build_weather_context(weather) + "\n\n" + load_prompt("weather_song_base.txt")
+    base_prompt = load_prompt("weather_song_base.txt").replace("{duration}", str(duration))
+    user_prompt = _build_weather_context(weather) + "\n\n" + base_prompt
 
     response = await _get_client().beta.chat.completions.parse(
         model="gpt-5.2",

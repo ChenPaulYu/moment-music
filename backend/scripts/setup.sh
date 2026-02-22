@@ -77,6 +77,14 @@ HF_TOKEN=
 
 # Stability AI (optional, for Stable Audio API cloud engine)
 STABILITY_API_KEY=
+
+# --- Generation defaults (all overridable per request) ---
+# Engine: stable_audio_api | stable_audio_open | ace_step | qwen3_tts | heart_mula
+DEFAULT_ENGINE=ace_step
+# Duration in seconds (default: 30)
+DEFAULT_DURATION=30
+# Output type: instrumental | song | narration
+DEFAULT_OUTPUT_TYPE=instrumental
 ENVEOF
     echo "  ⚠ Created .env — please fill in your API keys"
 fi

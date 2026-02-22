@@ -13,4 +13,6 @@ Moods: [mood1, mood2, mood3] |
 BPM: [optional] |
 Additional descriptors: [optional, e.g., 'lo-fi texture', 'warm analog vibe']
 
+The audio will be {duration} seconds long. Structure the prompt so the music feels complete within that time — shorter pieces should be simpler and more focused, while longer pieces can have more development and variation.
+
 The final music prompt should feel like a sonic interpretation of the day's atmosphere.
