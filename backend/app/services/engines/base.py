@@ -52,6 +52,10 @@ class AudioEngine(ABC):
         """Check whether this engine can run in the current environment."""
         ...
 
+    def unload(self):
+        """Release model from memory. Override in subclasses to clear cached models."""
+        pass
+
     def info(self) -> dict:
         return {
             "engine": self.engine_type.value,

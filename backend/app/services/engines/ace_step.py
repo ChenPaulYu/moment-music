@@ -42,6 +42,16 @@ class AceStepEngine(AudioEngine):
         )
         return self._handler
 
+    def unload(self):
+        if self._handler is not None:
+            import gc
+            import torch
+            del self._handler
+            self._handler = None
+            gc.collect()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+
     async def generate(
         self, prompt: str, duration: float, output_path: Path, **kwargs
     ) -> Path:

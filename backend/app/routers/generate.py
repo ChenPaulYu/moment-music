@@ -22,7 +22,7 @@ AUDIO_DIR = Path(__file__).resolve().parent.parent.parent / "audio"
 
 class GenerateRequest(BaseModel):
     location: str
-    engine: str = EngineType.STABLE_AUDIO_API.value
+    engine: str = EngineType.ACE_STEP.value
     duration: int = 20
     output_type: str = "instrumental"  # "instrumental" | "song" | "narration"
 
@@ -208,18 +208,20 @@ async def _handle_narration(req, weather, engine, lat, lon):
             content={"error": "Narration requires Qwen3-TTS engine which is not available"},
         )
 
-    # Generate voice narration and background music concurrently
-    voice_task = tts_engine.generate(
+    # Generate sequentially and unload between models to avoid MPS OOM
+    await tts_engine.generate(
         prompt=interpretation.narration_text,
         duration=req.duration,
         output_path=voice_path,
     )
-    music_task = engine.generate(
+    tts_engine.unload()
+
+    await engine.generate(
         prompt=interpretation.background_music_prompt,
         duration=req.duration,
         output_path=music_path,
     )
-    await asyncio.gather(voice_task, music_task)
+    engine.unload()
 
     # Mix voice over background music into final file
     final_filename = f"{_uid()}.mp3"

@@ -44,6 +44,16 @@ class Qwen3TTSEngine(AudioEngine):
         )
         return self._model
 
+    def unload(self):
+        if self._model is not None:
+            import gc
+            import torch
+            del self._model
+            self._model = None
+            gc.collect()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+
     async def generate(
         self, prompt: str, duration: float, output_path: Path, **kwargs
     ) -> Path:
