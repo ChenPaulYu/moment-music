@@ -4,6 +4,7 @@ import type { OutputType } from "@/lib/types";
 interface OutputTypeSelectorProps {
   value: OutputType;
   onChange: (value: OutputType) => void;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -16,16 +17,18 @@ const options: { value: OutputType; label: string }[] = [
 export default function OutputTypeSelector({
   value,
   onChange,
+  disabled,
   className,
 }: OutputTypeSelectorProps) {
   return (
-    <div className={cn("glass-panel rounded-lg p-1 flex w-full max-w-md", className)}>
+    <div className={cn("glass-panel rounded-lg p-1 flex w-full max-w-md", disabled && "opacity-50", className)}>
       {options.map((opt) => (
         <button
           key={opt.value}
-          onClick={() => onChange(opt.value)}
+          onClick={() => !disabled && onChange(opt.value)}
           className={cn(
-            "flex-1 py-2.5 px-2 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-all duration-300 cursor-pointer",
+            "flex-1 py-2.5 px-2 sm:px-4 rounded-md text-xs sm:text-sm font-medium transition-all duration-300",
+            disabled ? "cursor-not-allowed pointer-events-none" : "cursor-pointer",
             value === opt.value
               ? "bg-primary text-white shadow-lg"
               : "text-white/50 hover:text-white/80"

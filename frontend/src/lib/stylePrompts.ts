@@ -66,3 +66,57 @@ export function isStylePromptModified(key: StylePromptKey): boolean {
   const stored = readStorage();
   return key in stored && stored[key] !== DEFAULTS[key];
 }
+
+// --- Mode-scoped prompt overrides ---
+
+export type CreationMode = "write" | "listen" | "move" | "be";
+
+function modeStorageKey(mode: CreationMode): string {
+  return `moment-style-prompts-${mode}`;
+}
+
+function readModeStorage(mode: CreationMode): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(modeStorageKey(mode));
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeModeStorage(mode: CreationMode, data: Record<string, string>): void {
+  localStorage.setItem(modeStorageKey(mode), JSON.stringify(data));
+}
+
+export function getModeStylePrompt(mode: CreationMode, key: StylePromptKey): string {
+  const stored = readModeStorage(mode);
+  return key in stored ? stored[key] : "";
+}
+
+export function setModeStylePrompt(mode: CreationMode, key: StylePromptKey, value: string): void {
+  const stored = readModeStorage(mode);
+  stored[key] = value;
+  writeModeStorage(mode, stored);
+}
+
+export function resetModeStylePrompt(mode: CreationMode, key: StylePromptKey): void {
+  const stored = readModeStorage(mode);
+  delete stored[key];
+  writeModeStorage(mode, stored);
+}
+
+export function isModeStylePromptModified(mode: CreationMode, key: StylePromptKey): boolean {
+  const stored = readModeStorage(mode);
+  return key in stored && stored[key] !== "";
+}
+
+/** Resolve prompts for a mode: mode override → global → default */
+export function getAllStylePromptsForMode(mode: CreationMode): Record<StylePromptKey, string> {
+  const globalPrompts = getAllStylePrompts();
+  const modeStored = readModeStorage(mode);
+  const result = {} as Record<StylePromptKey, string>;
+  for (const key of Object.keys(DEFAULTS) as StylePromptKey[]) {
+    result[key] = (key in modeStored && modeStored[key]) ? modeStored[key] : globalPrompts[key];
+  }
+  return result;
+}

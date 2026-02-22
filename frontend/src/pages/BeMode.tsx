@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/layout/PageLayout";
 import GlassPanel from "@/components/ui/GlassPanel";
@@ -8,9 +8,10 @@ import GenerationSteps from "@/components/ui/GenerationSteps";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import AnimateIn from "@/components/animation/AnimateIn";
 import { cn } from "@/lib/utils";
-import { generateBe, getApiKeyStatus } from "@/lib/api";
+import { generateBe, getApiKeyStatus, getJobStatus, cancelJob } from "@/lib/api";
+import { saveActiveJob, getActiveJob, clearActiveJob } from "@/lib/jobs";
 import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
-import { getAllStylePrompts } from "@/lib/stylePrompts";
+import { getAllStylePromptsForMode } from "@/lib/stylePrompts";
 import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
 import type { OutputType, EnvironmentData } from "@/lib/types";
 
@@ -52,17 +53,14 @@ export default function BeMode() {
   const [locationName, setLocationName] = useState("");
   const [generating, setGenerating] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
-  const stepTimer = useRef<ReturnType<typeof setInterval>>();
+  const [steps, setSteps] = useState<string[]>([]);
+  const [queuePosition, setQueuePosition] = useState(0);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
   const [error, setError] = useState<string | null>(null);
   const [showKeyDialog, setShowKeyDialog] = useState(false);
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
 
-  const STEPS = [
-    "Interpreting atmosphere",
-    "Composing audio prompt",
-    "Generating audio",
-    "Rendering final mix",
-  ];
   const [envData, setEnvData] = useState<EnvironmentData>({
     location: "—",
     weather: "—",
@@ -113,8 +111,52 @@ export default function BeMode() {
     );
   };
 
-  // Cleanup step timer on unmount
-  useEffect(() => () => clearInterval(stepTimer.current), []);
+  const startPolling = useCallback((jid: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await getJobStatus(jid);
+        setSteps(job.steps);
+        setCurrentStep(job.step);
+        setQueuePosition(job.queue_position);
+
+        if (job.status === "completed") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setCurrentStep(job.steps.length);
+          await new Promise((r) => setTimeout(r, 500));
+          navigate("/player", { state: job.result });
+        } else if (job.status === "failed") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setError(job.error || "Generation failed");
+          setGenerating(false);
+          setJobId(null);
+        } else if (job.status === "cancelled") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setGenerating(false);
+          setJobId(null);
+        }
+      } catch {
+        clearInterval(pollRef.current);
+        clearActiveJob();
+        setGenerating(false);
+        setJobId(null);
+        setError("Generation session lost. Please try again.");
+      }
+    }, 2000);
+  }, [navigate]);
+
+  // Resume job on mount
+  useEffect(() => {
+    const active = getActiveJob();
+    if (active && active.mode === "be") {
+      setJobId(active.jobId);
+      setGenerating(true);
+      startPolling(active.jobId);
+    }
+    return () => clearInterval(pollRef.current);
+  }, [startPolling]);
 
   const handleGenerate = async () => {
     if (!fetched || generating) return;
@@ -140,32 +182,34 @@ export default function BeMode() {
     setCurrentStep(0);
     setError(null);
 
-    const startTime = Date.now();
-    stepTimer.current = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      const p = 2.9 * (1 - Math.exp(-elapsed / 60));
-      setCurrentStep(Math.min(Math.floor(p), 2));
-    }, 1000);
-
     try {
-      const response = await generateBe({
+      const { job_id } = await generateBe({
         location: locationName,
         outputType,
         engine: getEngineForOutput(outputType),
         generate_image: getAlbumArtEnabled(),
-        style_prompts: getAllStylePrompts(),
+        style_prompts: getAllStylePromptsForMode("be"),
       });
-      clearInterval(stepTimer.current);
-      setCurrentStep(STEPS.length);
-      await new Promise((r) => setTimeout(r, 500));
-      navigate("/player", { state: response });
+      setJobId(job_id);
+      saveActiveJob(job_id, "be");
+      startPolling(job_id);
     } catch (err) {
-      clearInterval(stepTimer.current);
       setCurrentStep(-1);
       setError(
         err instanceof Error ? err.message : "Generation failed. Try again."
       );
       setGenerating(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (jobId) {
+      await cancelJob(jobId);
+      clearInterval(pollRef.current);
+      clearActiveJob();
+      setGenerating(false);
+      setCurrentStep(-1);
+      setJobId(null);
     }
   };
 
@@ -279,7 +323,11 @@ export default function BeMode() {
 
       {/* Output type + Generate */}
       <AnimateIn delay={400}>
-        <OutputTypeSelector value={outputType} onChange={setOutputType} />
+        <OutputTypeSelector
+          value={outputType}
+          onChange={setOutputType}
+          disabled={generating}
+        />
         <GenerateButton
           className="mt-6"
           onClick={handleGenerate}
@@ -289,7 +337,23 @@ export default function BeMode() {
           icon={generating ? "progress_activity" : "auto_awesome"}
         />
         {generating && (
-          <GenerationSteps steps={STEPS} currentStep={currentStep} />
+          <>
+            {queuePosition > 0 ? (
+              <p className="text-white/50 text-sm mt-4 text-center">
+                Waiting in queue (position #{queuePosition})...
+              </p>
+            ) : (
+              <GenerationSteps steps={steps} currentStep={currentStep} />
+            )}
+            <div className="flex justify-center">
+              <button
+                onClick={handleCancel}
+                className="mt-3 text-sm text-white/40 hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
         )}
         {error && (
           <p className="mt-4 text-red-400 text-sm text-center max-w-md">

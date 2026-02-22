@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/layout/PageLayout";
 import OutputTypeSelector from "@/components/ui/OutputTypeSelector";
@@ -8,9 +8,10 @@ import MaterialIcon from "@/components/ui/MaterialIcon";
 import VisualizerBars from "@/components/ui/VisualizerBars";
 import AnimateIn from "@/components/animation/AnimateIn";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
-import { generateListen, getApiKeyStatus } from "@/lib/api";
+import { generateListen, getApiKeyStatus, getJobStatus, cancelJob } from "@/lib/api";
+import { saveActiveJob, getActiveJob, clearActiveJob } from "@/lib/jobs";
 import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
-import { getAllStylePrompts } from "@/lib/stylePrompts";
+import { getAllStylePromptsForMode } from "@/lib/stylePrompts";
 import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
 import { cn, formatTime } from "@/lib/utils";
 import type { OutputType } from "@/lib/types";
@@ -24,20 +25,100 @@ export default function ListenMode() {
 
   const [generating, setGenerating] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
+  const [steps, setSteps] = useState<string[]>([]);
+  const [queuePosition, setQueuePosition] = useState(0);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
   const [error, setError] = useState<string | null>(null);
   const [showKeyDialog, setShowKeyDialog] = useState(false);
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
-  const stepTimer = useRef<ReturnType<typeof setInterval>>();
 
-  const STEPS = [
-    "Analyzing audio",
-    "Interpreting mood",
-    "Generating audio",
-    "Rendering final mix",
-  ];
+  // Audio preview state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+  const [playbackTime, setPlaybackTime] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Cleanup step timer on unmount
-  useEffect(() => () => clearInterval(stepTimer.current), []);
+  const startPolling = useCallback((jid: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await getJobStatus(jid);
+        setSteps(job.steps);
+        setCurrentStep(job.step);
+        setQueuePosition(job.queue_position);
+
+        if (job.status === "completed") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setCurrentStep(job.steps.length);
+          await new Promise((r) => setTimeout(r, 500));
+          navigate("/player", { state: job.result });
+        } else if (job.status === "failed") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setError(job.error || "Generation failed");
+          setGenerating(false);
+          setJobId(null);
+        } else if (job.status === "cancelled") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setGenerating(false);
+          setJobId(null);
+        }
+      } catch {
+        clearInterval(pollRef.current);
+        clearActiveJob();
+        setGenerating(false);
+        setJobId(null);
+        setError("Generation session lost. Please try again.");
+      }
+    }, 2000);
+  }, [navigate]);
+
+  // Create/revoke object URL for audio preview
+  useEffect(() => {
+    if (audioBlob) {
+      const url = URL.createObjectURL(audioBlob);
+      setAudioUrl(url);
+      setIsPlaying(false);
+      setPlaybackProgress(0);
+      setPlaybackTime(0);
+      return () => URL.revokeObjectURL(url);
+    } else {
+      setAudioUrl(null);
+    }
+  }, [audioBlob]);
+
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play();
+      setIsPlaying(true);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    const audio = audioRef.current;
+    if (!audio || !audio.duration) return;
+    setPlaybackTime(audio.currentTime);
+    setPlaybackProgress((audio.currentTime / audio.duration) * 100);
+  };
+
+  // Resume job on mount
+  useEffect(() => {
+    const active = getActiveJob();
+    if (active && active.mode === "listen") {
+      setJobId(active.jobId);
+      setGenerating(true);
+      startPolling(active.jobId);
+    }
+    return () => clearInterval(pollRef.current);
+  }, [startPolling]);
 
   const handleMicClick = async () => {
     if (isRecording) {
@@ -70,32 +151,34 @@ export default function ListenMode() {
     setCurrentStep(0);
     setError(null);
 
-    const startTime = Date.now();
-    stepTimer.current = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      const p = 2.9 * (1 - Math.exp(-elapsed / 60));
-      setCurrentStep(Math.min(Math.floor(p), 2));
-    }, 1000);
-
     try {
-      const response = await generateListen({
+      const { job_id } = await generateListen({
         audio: audioBlob,
         outputType,
         engine: getEngineForOutput(outputType),
         generate_image: getAlbumArtEnabled(),
-        style_prompts: getAllStylePrompts(),
+        style_prompts: getAllStylePromptsForMode("listen"),
       });
-      clearInterval(stepTimer.current);
-      setCurrentStep(STEPS.length);
-      await new Promise((r) => setTimeout(r, 500));
-      navigate("/player", { state: response });
+      setJobId(job_id);
+      saveActiveJob(job_id, "listen");
+      startPolling(job_id);
     } catch (err) {
-      clearInterval(stepTimer.current);
       setCurrentStep(-1);
       setError(
         err instanceof Error ? err.message : "Generation failed. Try again."
       );
       setGenerating(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (jobId) {
+      await cancelJob(jobId);
+      clearInterval(pollRef.current);
+      clearActiveJob();
+      setGenerating(false);
+      setCurrentStep(-1);
+      setJobId(null);
     }
   };
 
@@ -183,11 +266,45 @@ export default function ListenMode() {
         {formatTime(Math.floor(elapsed))} / {formatTime(maxDuration)}
       </AnimateIn>
 
-      {/* Captured audio indicator */}
+      {/* Captured audio indicator + preview */}
       {audioBlob && !isRecording && (
-        <div className="flex items-center gap-2 mb-6 text-green-400 text-sm">
-          <MaterialIcon icon="check_circle" size={18} />
-          <span>Audio captured ({(audioBlob.size / 1024).toFixed(1)} KB)</span>
+        <div className="flex flex-col items-center gap-3 mb-6 w-full max-w-md">
+          <div className="flex items-center gap-2 text-green-400 text-sm">
+            <MaterialIcon icon="check_circle" size={18} />
+            <span>Audio captured ({(audioBlob.size / 1024).toFixed(1)} KB)</span>
+          </div>
+
+          {audioUrl && (
+            <div className="glass-panel rounded-xl p-4 w-full">
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={togglePlayback}
+                  className="w-9 h-9 rounded-full bg-primary/20 border border-primary/30 flex items-center justify-center hover:bg-primary/30 transition-colors cursor-pointer shrink-0"
+                >
+                  <MaterialIcon
+                    icon={isPlaying ? "pause" : "play_arrow"}
+                    size={20}
+                    className="text-white"
+                  />
+                </button>
+                <audio
+                  ref={audioRef}
+                  src={audioUrl}
+                  onEnded={() => { setIsPlaying(false); setPlaybackProgress(0); setPlaybackTime(0); }}
+                  onTimeUpdate={handleTimeUpdate}
+                />
+                <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-primary rounded-full transition-all duration-150"
+                    style={{ width: `${playbackProgress}%` }}
+                  />
+                </div>
+                <span className="text-white/40 text-xs font-mono shrink-0">
+                  {formatTime(Math.floor(playbackTime))}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -196,7 +313,11 @@ export default function ListenMode() {
         <p className="text-xs font-bold tracking-widest uppercase text-white/60 mb-3">
           Output Mode
         </p>
-        <OutputTypeSelector value={outputType} onChange={setOutputType} />
+        <OutputTypeSelector
+          value={outputType}
+          onChange={setOutputType}
+          disabled={generating}
+        />
       </AnimateIn>
 
       {/* Generate */}
@@ -210,7 +331,23 @@ export default function ListenMode() {
           label={generating ? "Generating..." : "Generate Soundscape"}
         />
         {generating && (
-          <GenerationSteps steps={STEPS} currentStep={currentStep} />
+          <>
+            {queuePosition > 0 ? (
+              <p className="text-white/50 text-sm mt-4 text-center">
+                Waiting in queue (position #{queuePosition})...
+              </p>
+            ) : (
+              <GenerationSteps steps={steps} currentStep={currentStep} />
+            )}
+            <div className="flex justify-center">
+              <button
+                onClick={handleCancel}
+                className="mt-3 text-sm text-white/40 hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
         )}
         {error && (
           <p className="mt-4 text-red-400 text-sm text-center max-w-md">

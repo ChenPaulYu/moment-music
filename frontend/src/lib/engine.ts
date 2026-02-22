@@ -5,7 +5,6 @@ const STORAGE_KEY = "moment-engines";
 const DISPLAY_TO_ENGINE: Record<string, string> = {
   "Stable Audio API (Cloud)": "stable_audio_api",
   "Stable Audio Open": "stable_audio_open",
-  "Magenta RT": "magenta_rt",
   "ACE-STEP": "ace_step",
   "HeartMuLa": "heart_mula",
 };

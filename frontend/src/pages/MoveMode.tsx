@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/layout/PageLayout";
 import OutputTypeSelector from "@/components/ui/OutputTypeSelector";
@@ -7,19 +7,13 @@ import GenerationSteps from "@/components/ui/GenerationSteps";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import AnimateIn from "@/components/animation/AnimateIn";
 import { useDeviceMotion } from "@/hooks/useDeviceMotion";
-import { generateMove, getApiKeyStatus } from "@/lib/api";
+import { generateMove, getApiKeyStatus, getJobStatus, cancelJob } from "@/lib/api";
+import { saveActiveJob, getActiveJob, clearActiveJob } from "@/lib/jobs";
 import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
-import { getAllStylePrompts } from "@/lib/stylePrompts";
+import { getAllStylePromptsForMode } from "@/lib/stylePrompts";
 import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
 import { cn } from "@/lib/utils";
 import type { OutputType } from "@/lib/types";
-
-const STEPS = [
-  "Analyzing movement",
-  "Interpreting rhythm",
-  "Generating audio",
-  "Rendering final mix",
-];
 
 export default function MoveMode() {
   const navigate = useNavigate();
@@ -28,12 +22,60 @@ export default function MoveMode() {
 
   const [generating, setGenerating] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
+  const [steps, setSteps] = useState<string[]>([]);
+  const [queuePosition, setQueuePosition] = useState(0);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval>>();
   const [error, setError] = useState<string | null>(null);
   const [showKeyDialog, setShowKeyDialog] = useState(false);
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
-  const stepTimer = useRef<ReturnType<typeof setInterval>>();
 
-  useEffect(() => () => clearInterval(stepTimer.current), []);
+  const startPolling = useCallback((jid: string) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const job = await getJobStatus(jid);
+        setSteps(job.steps);
+        setCurrentStep(job.step);
+        setQueuePosition(job.queue_position);
+
+        if (job.status === "completed") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setCurrentStep(job.steps.length);
+          await new Promise((r) => setTimeout(r, 500));
+          navigate("/player", { state: job.result });
+        } else if (job.status === "failed") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setError(job.error || "Generation failed");
+          setGenerating(false);
+          setJobId(null);
+        } else if (job.status === "cancelled") {
+          clearInterval(pollRef.current);
+          clearActiveJob();
+          setGenerating(false);
+          setJobId(null);
+        }
+      } catch {
+        clearInterval(pollRef.current);
+        clearActiveJob();
+        setGenerating(false);
+        setJobId(null);
+        setError("Generation session lost. Please try again.");
+      }
+    }, 2000);
+  }, [navigate]);
+
+  // Resume job on mount
+  useEffect(() => {
+    const active = getActiveJob();
+    if (active && active.mode === "move") {
+      setJobId(active.jobId);
+      setGenerating(true);
+      startPolling(active.jobId);
+    }
+    return () => clearInterval(pollRef.current);
+  }, [startPolling]);
 
   const handleCaptureToggle = async () => {
     if (isCapturing) {
@@ -66,33 +108,34 @@ export default function MoveMode() {
     setCurrentStep(0);
     setError(null);
 
-    const startTime = Date.now();
-    stepTimer.current = setInterval(() => {
-      const elapsed = (Date.now() - startTime) / 1000;
-      // Asymptotic progress mapped to step indices 0-2 (never reaches 3 until done)
-      const p = 2.9 * (1 - Math.exp(-elapsed / 60));
-      setCurrentStep(Math.min(Math.floor(p), 2));
-    }, 1000);
-
     try {
-      const response = await generateMove({
+      const { job_id } = await generateMove({
         motionData: toJSON(),
         outputType,
         engine: getEngineForOutput(outputType),
         generate_image: getAlbumArtEnabled(),
-        style_prompts: getAllStylePrompts(),
+        style_prompts: getAllStylePromptsForMode("move"),
       });
-      clearInterval(stepTimer.current);
-      setCurrentStep(STEPS.length);
-      await new Promise((r) => setTimeout(r, 500));
-      navigate("/player", { state: response });
+      setJobId(job_id);
+      saveActiveJob(job_id, "move");
+      startPolling(job_id);
     } catch (err) {
-      clearInterval(stepTimer.current);
       setCurrentStep(-1);
       setError(
         err instanceof Error ? err.message : "Generation failed. Try again."
       );
       setGenerating(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (jobId) {
+      await cancelJob(jobId);
+      clearInterval(pollRef.current);
+      clearActiveJob();
+      setGenerating(false);
+      setCurrentStep(-1);
+      setJobId(null);
     }
   };
 
@@ -176,7 +219,11 @@ export default function MoveMode() {
 
       {/* Output type + Generate */}
       <AnimateIn delay={300}>
-        <OutputTypeSelector value={outputType} onChange={setOutputType} />
+        <OutputTypeSelector
+          value={outputType}
+          onChange={setOutputType}
+          disabled={generating}
+        />
         <GenerateButton
           icon={generating ? "progress_activity" : "auto_fix_high"}
           className="mt-8"
@@ -186,7 +233,23 @@ export default function MoveMode() {
           label={generating ? "Generating..." : "Generate Soundscape"}
         />
         {generating && (
-          <GenerationSteps steps={STEPS} currentStep={currentStep} />
+          <>
+            {queuePosition > 0 ? (
+              <p className="text-white/50 text-sm mt-4 text-center">
+                Waiting in queue (position #{queuePosition})...
+              </p>
+            ) : (
+              <GenerationSteps steps={steps} currentStep={currentStep} />
+            )}
+            <div className="flex justify-center">
+              <button
+                onClick={handleCancel}
+                className="mt-3 text-sm text-white/40 hover:text-red-400 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </>
         )}
         {error && (
           <p className="mt-4 text-red-400 text-sm text-center max-w-md">

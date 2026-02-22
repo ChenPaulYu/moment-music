@@ -12,6 +12,7 @@ from app.routers.generate import router as generate_router
 from app.routers.listen import router as listen_router
 from app.routers.move import router as move_router
 from app.routers.write import router as write_router
+from app.services.jobs import job_store
 
 # Load environment variables from .env
 load_dotenv()
@@ -40,6 +41,32 @@ AUDIO_DIR = Path(__file__).resolve().parent.parent / "audio"
 IMAGES_DIR = Path(__file__).resolve().parent.parent / "images"
 
 
+@app.get("/api/jobs/{job_id}")
+def get_job_status(job_id: str):
+    job = job_store.get(job_id)
+    if not job:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return {
+        "id": job.id,
+        "status": job.status,
+        "step": job.step,
+        "steps": job.steps,
+        "result": job.result,
+        "error": job.error,
+        "mode": job.mode,
+        "output_type": job.output_type,
+        "queue_position": job_store.queue_position(job_id),
+    }
+
+
+@app.post("/api/jobs/{job_id}/cancel")
+def cancel_job(job_id: str):
+    success = job_store.cancel(job_id)
+    if not success:
+        return JSONResponse(status_code=404, content={"error": "Job not found or already finished"})
+    return {"ok": True}
+
+
 @app.get("/audio/{filename}")
 def serve_audio(filename: str):
     path = AUDIO_DIR / filename
@@ -63,6 +90,7 @@ ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 _KEY_MAP = {
     "openai_api_key": "OPENAI_API_KEY",
     "stability_api_key": "STABILITY_API_KEY",
+    "hf_token": "HF_TOKEN",
 }
 
 
@@ -71,12 +99,14 @@ def api_keys_status():
     return {
         "openai": bool(os.environ.get("OPENAI_API_KEY")),
         "stability": bool(os.environ.get("STABILITY_API_KEY")),
+        "huggingface": bool(os.environ.get("HF_TOKEN")),
     }
 
 
 class SaveKeysRequest(BaseModel):
     openai_api_key: str | None = None
     stability_api_key: str | None = None
+    hf_token: str | None = None
 
 
 @app.post("/api/settings/keys")

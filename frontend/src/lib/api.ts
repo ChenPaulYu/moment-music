@@ -1,5 +1,37 @@
 import type { OutputType, CreationMode, BeGenerateResponse } from "./types";
 
+const API_BASE = "/api";
+
+// --- Job types ---
+
+export interface JobStatus {
+  id: string;
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  step: number;
+  steps: string[];
+  result: BeGenerateResponse | null;
+  error: string | null;
+  mode: string;
+  output_type: string;
+  queue_position: number;
+}
+
+// --- Job API ---
+
+export async function getJobStatus(jobId: string): Promise<JobStatus> {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}`);
+  if (!res.ok) {
+    throw new Error("Job not found");
+  }
+  return res.json();
+}
+
+export async function cancelJob(jobId: string): Promise<void> {
+  await fetch(`${API_BASE}/jobs/${jobId}/cancel`, { method: "POST" });
+}
+
+// --- Generation API (all return job_id now) ---
+
 interface GenerateRequest {
   mode: CreationMode;
   outputType: OutputType;
@@ -47,7 +79,7 @@ export async function generateBe(params: {
   duration?: number;
   generate_image?: boolean;
   style_prompts?: Record<string, string>;
-}): Promise<BeGenerateResponse> {
+}): Promise<{ job_id: string }> {
   const res = await fetch("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -74,7 +106,7 @@ export async function generateWrite(params: {
   engine?: string;
   generate_image?: boolean;
   style_prompts?: Record<string, string>;
-}): Promise<BeGenerateResponse> {
+}): Promise<{ job_id: string }> {
   const formData = new FormData();
   formData.append("text", params.text);
   formData.append("output_type", params.outputType);
@@ -103,7 +135,7 @@ export async function generateListen(params: {
   engine?: string;
   generate_image?: boolean;
   style_prompts?: Record<string, string>;
-}): Promise<BeGenerateResponse> {
+}): Promise<{ job_id: string }> {
   const formData = new FormData();
   formData.append("audio", params.audio, "capture.webm");
   formData.append("output_type", params.outputType);
@@ -129,7 +161,7 @@ export async function generateMove(params: {
   engine?: string;
   generate_image?: boolean;
   style_prompts?: Record<string, string>;
-}): Promise<BeGenerateResponse> {
+}): Promise<{ job_id: string }> {
   const res = await fetch("/api/move/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -155,6 +187,7 @@ export function getAudioUrl(filename: string): string {
 export async function getApiKeyStatus(): Promise<{
   openai: boolean;
   stability: boolean;
+  huggingface: boolean;
 }> {
   const res = await fetch("/api/settings/keys/status");
   if (!res.ok) throw new Error("Failed to fetch API key status");
@@ -164,6 +197,7 @@ export async function getApiKeyStatus(): Promise<{
 export async function saveApiKeys(keys: {
   openai_api_key?: string;
   stability_api_key?: string;
+  hf_token?: string;
 }): Promise<void> {
   const res = await fetch("/api/settings/keys", {
     method: "POST",

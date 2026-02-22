@@ -1,6 +1,8 @@
 # Design Guide
 
-Visual design system for Moment Music, derived from the UI reference screens.
+Visual design system for Moment Music. Dark-mode-first, glass morphism aesthetic.
+
+**Tailwind CSS:** v3.4 (not v4). Custom glass classes defined in `frontend/src/index.css`.
 
 ---
 
@@ -11,21 +13,28 @@ Visual design system for Moment Music, derived from the UI reference screens.
 |-------|-----|-------|
 | `primary` | `#3713ec` | CTAs, active states, accent highlights |
 | `primary-hover` | `#3713ec` at 90% opacity | Button hover states |
-| `bg-dark` | `#131022` | Page background (dark mode) |
-| `bg-light` | `#f6f6f8` | Page background (light mode) |
+| `bg-dark` | `#131022` | Page background |
 | `surface` | `#1e1933` | Card backgrounds, panels |
 | `surface-glass` | `rgba(255,255,255,0.05)` | Glass morphism panels |
-| `border` | `rgba(255,255,255,0.1)` | Subtle borders on dark |
-| `text-primary` | `#ffffff` | Main text (dark mode) |
-| `text-secondary` | `rgba(255,255,255,0.6)` | Secondary text |
+| `border` | `rgba(255,255,255,0.1)` / `#292348` | Subtle borders |
+| `text-primary` | `#ffffff` | Main text |
+| `text-secondary` | `#9b92c9` | Secondary text, descriptions |
 | `text-muted` | `rgba(255,255,255,0.4)` | Labels, captions |
-| `success` | emerald/green | System online, connected status |
+| `success` | emerald/green | System online, API key configured |
 | `warning` | amber | Caution states |
-| `error` | red | Error states, disconnected |
+| `error` | red | Error states, API key missing |
+
+### Mode Accent Colors
+| Mode | Color | Tailwind Class |
+|------|-------|---------------|
+| Write | Pink | `text-pink-400` |
+| Listen | Blue | `text-blue-400` |
+| Move | Green | `text-emerald-400` |
+| Be | Amber | `text-amber-400` |
 
 ### Accent Colors
 - Purple: `#6d28d9` — secondary accent
-- Gradient overlays: multi-color blends for backgrounds
+- Gradient overlays: multi-color blends for animated backgrounds
 
 ---
 
@@ -51,10 +60,16 @@ Visual design system for Moment Music, derived from the UI reference screens.
 
 ## Glass Morphism
 
-The signature visual effect. Apply to panels, cards, and overlays.
+The signature visual effect. Defined as reusable CSS classes in `index.css`:
+
+| Class | Usage |
+|-------|-------|
+| `.glass-panel` | Cards, panels, containers |
+| `.glass-input` | Text inputs, textareas |
+| `.glass-button` | Secondary action buttons |
 
 ```css
-/* Glass panel */
+/* .glass-panel */
 background: rgba(255, 255, 255, 0.05);
 backdrop-filter: blur(16px);
 border: 1px solid rgba(255, 255, 255, 0.1);
@@ -106,10 +121,16 @@ Variations:
 - Focus: primary glow ring
 - Placeholder: text-muted color
 
-**Segmented Control (Output Type Selector):**
-- Pill-shaped radio group
-- Active segment: primary background
+**Segmented Control (OutputTypeSelector):**
+- Pill-shaped radio group with icons
+- Active segment: primary background with glow
 - Inactive: glass background
+- Three options: Instrumental (piano), Song (lyrics), Narration (record_voice_over)
+
+**Pill Selector (Setup page):**
+- Small pill buttons for engine selection
+- Active: `bg-primary/20 text-white border-primary/40`
+- Inactive: `bg-[#131022] text-[#9b92c9] border-[#292348]`
 
 ---
 
@@ -161,8 +182,8 @@ Used for: Entryway, creation modes
 
 ## Iconography
 
-**Icon Set:** Material Symbols Outlined (Google)
-- Loaded via CDN
+**Icon Set:** Material Symbols Outlined (Google Fonts CDN)
+- Wrapped in `MaterialIcon` component for consistent usage
 - Fill variations: 0 (outlined) or 1 (filled) for active states
 - Sizes: 20px (small), 24px (default), 32px (large), 48px (feature)
 
@@ -171,5 +192,27 @@ Common icons:
 - `mic` — Listen mode
 - `directions_run` — Move mode
 - `nature` — Be mode
-- `play_arrow`, `pause`, `skip_next`, `skip_previous` — Player controls
+- `piano` — Instrumental output
+- `lyrics` — Song output
+- `record_voice_over` — Narration output
+- `play_arrow`, `pause` — Player controls
 - `download`, `bookmark` — Save/archive actions
+- `key` — API keys
+- `image` — Album art
+
+---
+
+## Key UI Components
+
+| Component | Location | Usage |
+|-----------|----------|-------|
+| `PageLayout` | `components/layout/` | Wraps all pages with AnimatedBackground + Header + Footer |
+| `AnimatedBackground` | `components/layout/` | Floating gradient blobs behind content |
+| `OutputTypeSelector` | `components/ui/` | Shared 3-option pill selector across all modes |
+| `GenerateButton` | `components/ui/` | Shared generate CTA with loading state |
+| `GenerationSteps` | `components/ui/` | Step progress display during generation |
+| `MaterialIcon` | `components/ui/` | Wrapper for Google Material Symbols |
+| `ModeCard` | `components/ui/` | Mode selection card on Entryway |
+| `SoundscapeCard` | `components/ui/` | Library item card with album art |
+| `AudioVisualizer` | `components/ui/` | Animated bars for audio playback |
+| `AnimateIn` | `components/animation/` | Fade-in animation wrapper with stagger delay |

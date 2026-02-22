@@ -9,12 +9,14 @@ from fastapi.responses import JSONResponse
 
 from app.services.engines import EngineType, get_engine
 from app.services.image_generation import generate_album_art
+from app.services.jobs import job_store
 from app.services.prompt_generation import (
     interpret_write_to_music_prompt,
     interpret_write_to_narration,
     interpret_write_to_song,
 )
 from app.services.vision import caption_image
+from app.utils.audio_mixing import mix_narration_and_music
 from app.utils.helpers import estimate_song_duration, get_audio_duration
 
 router = APIRouter()
@@ -29,46 +31,17 @@ def _uid() -> str:
     return uuid4().hex[:12]
 
 
-async def _mix_narration_and_music(
-    voice_path: Path, music_path: Path, output_path: Path
-) -> Path:
-    """Layer narration voice over background music using soundfile + numpy."""
-    import numpy as np
-    import soundfile as sf
-
-    def _mix():
-        voice, voice_sr = sf.read(str(voice_path), dtype="float32")
-        music, music_sr = sf.read(str(music_path), dtype="float32")
-
-        if music_sr != voice_sr:
-            indices = np.round(np.arange(0, len(music), music_sr / voice_sr)).astype(int)
-            indices = indices[indices < len(music)]
-            music = music[indices]
-
-        if voice.ndim > 1:
-            voice = voice.mean(axis=1)
-        if music.ndim > 1:
-            music = music.mean(axis=1)
-
-        target_len = max(len(voice), len(music))
-        if len(voice) < target_len:
-            voice = np.pad(voice, (0, target_len - len(voice)))
-        if len(music) < target_len:
-            repeats = (target_len // len(music)) + 1
-            music = np.tile(music, repeats)[:target_len]
-        else:
-            music = music[:target_len]
-
-        mixed = voice + music * 0.25
-        peak = np.abs(mixed).max()
-        if peak > 0.95:
-            mixed = mixed * (0.95 / peak)
-
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        sf.write(str(output_path), mixed, samplerate=voice_sr)
-
-    await asyncio.to_thread(_mix)
-    return output_path
+def _get_steps(output_type: str, has_image: bool = False) -> list[str]:
+    steps = []
+    if has_image:
+        steps.append("Captioning image")
+    if output_type == "narration":
+        steps += ["Interpreting mood", "Writing narration", "Generating voice", "Generating background music", "Mixing audio", "Finalizing"]
+    elif output_type == "song":
+        steps += ["Interpreting mood", "Composing lyrics & tags", "Generating song", "Finalizing"]
+    else:
+        steps += ["Interpreting mood", "Generating audio", "Finalizing"]
+    return steps
 
 
 @router.post("/write/generate")
@@ -81,66 +54,120 @@ async def generate_write(
     style_prompts: str = Form(""),
     image: UploadFile | None = File(None),
 ):
+    # Validate: at least text or image required
+    has_text = bool(text.strip())
+    has_image = image is not None and image.filename
+
+    if not has_text and not has_image:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Please provide text or an image (or both)."},
+        )
+
+    if output_type not in ("instrumental", "song", "narration"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Invalid output_type: {output_type}. Must be instrumental, song, or narration."},
+        )
+
+    # Resolve music engine
     try:
-        # Validate: at least text or image required
-        has_text = bool(text.strip())
-        has_image = image is not None and image.filename
+        audio_engine = get_engine(engine)
+    except ValueError:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"Unknown engine: {engine}"},
+        )
 
-        if not has_text and not has_image:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Please provide text or an image (or both)."},
-            )
+    if not audio_engine.is_available():
+        return JSONResponse(
+            status_code=503,
+            content={"error": f"Engine '{engine}' is not available in this environment"},
+        )
 
-        if output_type not in ("instrumental", "song", "narration"):
-            return JSONResponse(
-                status_code=400,
-                content={"error": f"Invalid output_type: {output_type}. Must be instrumental, song, or narration."},
-            )
-
-        # Resolve music engine
+    # For narration, check TTS availability before creating job (fail fast)
+    if output_type == "narration":
         try:
-            audio_engine = get_engine(engine)
-        except ValueError:
-            return JSONResponse(
-                status_code=400,
-                content={"error": f"Unknown engine: {engine}"},
-            )
-
-        if not audio_engine.is_available():
+            tts_engine = get_engine(EngineType.QWEN3_TTS)
+            if not tts_engine.is_available():
+                return JSONResponse(
+                    status_code=503,
+                    content={"error": "Narration requires Qwen3-TTS engine which is not available"},
+                )
+        except Exception:
             return JSONResponse(
                 status_code=503,
-                content={"error": f"Engine '{engine}' is not available in this environment"},
+                content={"error": "Narration requires Qwen3-TTS engine which is not available"},
             )
 
-        # Caption image if provided
-        image_caption = None
-        if has_image:
-            image_bytes = await image.read()
-            mime = image.content_type or "image/jpeg"
-            image_caption = await caption_image(image_bytes, mime)
+    # Read image bytes now (before spawning async task, since UploadFile is request-scoped)
+    image_bytes = None
+    image_mime = None
+    if has_image:
+        image_bytes = await image.read()
+        image_mime = image.content_type or "image/jpeg"
 
-        # Use text or a fallback description
-        entry_text = text.strip() if has_text else "An image moment."
+    parsed_styles = json.loads(style_prompts) if style_prompts else None
+    want_image = generate_image.lower() == "true"
+    entry_text = text.strip() if has_text else "An image moment."
 
-        # Parse style prompts
-        parsed_styles = json.loads(style_prompts) if style_prompts else None
+    if job_store.is_queue_full():
+        return JSONResponse(
+            status_code=503,
+            content={"error": "Server is busy. Please try again in a moment."},
+        )
 
-        # Branch by output type
-        want_image = generate_image.lower() == "true"
-        if output_type == "narration":
-            return await _handle_narration(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles)
-        elif output_type == "song":
-            return await _handle_song(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles)
-        else:
-            return await _handle_instrumental(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles)
+    steps = _get_steps(output_type, has_image=bool(has_image))
+    job_id = job_store.create(mode="write", output_type=output_type, steps=steps)
 
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
+    async def _run():
+        try:
+            async with job_store.acquire(job_id):
+                if job_store.is_cancelled(job_id):
+                    return
+
+                step = 0
+                # Caption image if provided
+                image_caption = None
+                if image_bytes:
+                    job_store.update_step(job_id, step)
+                    image_caption = await caption_image(image_bytes, image_mime)
+                    step += 1
+                    if job_store.is_cancelled(job_id):
+                        return
+
+                if output_type == "narration":
+                    result = await _handle_narration(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id, step_offset=step)
+                elif output_type == "song":
+                    result = await _handle_song(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id, step_offset=step)
+                else:
+                    result = await _handle_instrumental(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id, step_offset=step)
+
+                if result is not None:
+                    job_store.complete(job_id, result)
+        except asyncio.CancelledError:
+            job_store.cancel(job_id)
+        except Exception as e:
+            job_store.fail(job_id, str(e))
+
+    task = asyncio.create_task(_run())
+    job_store.set_task(job_id, task)
+    return {"job_id": job_id}
 
 
-async def _handle_instrumental(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None):
+async def _handle_instrumental(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None, step_offset: int = 0):
+    if job_id:
+        job_store.update_step(job_id, step_offset)
+        if job_store.is_cancelled(job_id):
+            return None
+
     interpretation = await interpret_write_to_music_prompt(text, image_caption, duration=duration, style_prompts=style_prompts)
+
+    if job_id:
+        job_store.update_step(job_id, step_offset + 1)
+        if job_store.is_cancelled(job_id):
+            engine.unload()
+            return None
 
     filename = f"{_uid()}.mp3"
     output_path = AUDIO_DIR / filename
@@ -168,6 +195,9 @@ async def _handle_instrumental(text, image_caption, engine, engine_name, duratio
         img_filename = None
     engine.unload()
 
+    if job_id:
+        job_store.update_step(job_id, step_offset + 2)
+
     result = {
         "mode": "write",
         "output_type": "instrumental",
@@ -182,14 +212,30 @@ async def _handle_instrumental(text, image_caption, engine, engine_name, duratio
     return result
 
 
-async def _handle_song(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None):
+async def _handle_song(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None, step_offset: int = 0):
+    if job_id:
+        job_store.update_step(job_id, step_offset)
+        if job_store.is_cancelled(job_id):
+            return None
+
     interpretation = await interpret_write_to_song(text, image_caption, duration=duration, style_prompts=style_prompts)
 
-    # Let lyrics drive the duration
+    if job_id:
+        job_store.update_step(job_id, step_offset + 1)
+        if job_store.is_cancelled(job_id):
+            engine.unload()
+            return None
+
     song_duration = estimate_song_duration(interpretation.lyrics, target_duration=duration)
 
     filename = f"{_uid()}.mp3"
     output_path = AUDIO_DIR / filename
+
+    if job_id:
+        job_store.update_step(job_id, step_offset + 2)
+        if job_store.is_cancelled(job_id):
+            engine.unload()
+            return None
 
     if generate_image:
         art_desc = image_caption or text[:100]
@@ -218,6 +264,9 @@ async def _handle_song(text, image_caption, engine, engine_name, duration, gener
         img_filename = None
     engine.unload()
 
+    if job_id:
+        job_store.update_step(job_id, step_offset + 3)
+
     result = {
         "mode": "write",
         "output_type": "song",
@@ -233,25 +282,26 @@ async def _handle_song(text, image_caption, engine, engine_name, duration, gener
     return result
 
 
-async def _handle_narration(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None):
+async def _handle_narration(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None, step_offset: int = 0):
+    if job_id:
+        job_store.update_step(job_id, step_offset)
+        if job_store.is_cancelled(job_id):
+            return None
+
     interpretation = await interpret_write_to_narration(text, image_caption, duration=duration, style_prompts=style_prompts)
+
+    if job_id:
+        job_store.update_step(job_id, step_offset + 1)
+        if job_store.is_cancelled(job_id):
+            engine.unload()
+            return None
 
     voice_filename = f"{_uid()}_voice.wav"
     music_filename = f"{_uid()}_bg.mp3"
     voice_path = AUDIO_DIR / voice_filename
     music_path = AUDIO_DIR / music_filename
 
-    try:
-        tts_engine = get_engine(EngineType.QWEN3_TTS)
-        tts_available = tts_engine.is_available()
-    except Exception:
-        tts_available = False
-
-    if not tts_available:
-        return JSONResponse(
-            status_code=503,
-            content={"error": "Narration requires Qwen3-TTS engine which is not available"},
-        )
+    tts_engine = get_engine(EngineType.QWEN3_TTS)
 
     image_task = None
     if generate_image:
@@ -264,16 +314,26 @@ async def _handle_narration(text, image_caption, engine, engine_name, duration, 
             )
         )
 
-    # Generate TTS first, then measure its duration for background music
+    if job_id:
+        job_store.update_step(job_id, step_offset + 2)
+        if job_store.is_cancelled(job_id):
+            engine.unload()
+            return None
+
     await tts_engine.generate(
         prompt=interpretation.narration_text,
-        duration=0,  # ignored by TTS — duration driven by text
+        duration=0,
         output_path=voice_path,
     )
     tts_engine.unload()
 
-    # Match background music to actual voice duration
     voice_duration = await asyncio.to_thread(get_audio_duration, voice_path)
+
+    if job_id:
+        job_store.update_step(job_id, step_offset + 3)
+        if job_store.is_cancelled(job_id):
+            engine.unload()
+            return None
 
     await engine.generate(
         prompt=interpretation.background_music_prompt,
@@ -282,9 +342,17 @@ async def _handle_narration(text, image_caption, engine, engine_name, duration, 
     )
     engine.unload()
 
+    if job_id:
+        job_store.update_step(job_id, step_offset + 4)
+        if job_store.is_cancelled(job_id):
+            return None
+
     final_filename = f"{_uid()}.mp3"
     final_path = AUDIO_DIR / final_filename
-    await _mix_narration_and_music(voice_path, music_path, final_path)
+    await mix_narration_and_music(voice_path, music_path, final_path)
+
+    if job_id:
+        job_store.update_step(job_id, step_offset + 5)
 
     result = {
         "mode": "write",

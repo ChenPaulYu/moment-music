@@ -15,7 +15,7 @@ See `docs/overview.md` for full vision and architecture.
 ## Four Creation Modes
 
 1. **Write** - Text journal + image upload → mood interpretation → music
-2. **Listen** - Ambient sound capture → audio analysis → music
+2. **Listen** - Ambient sound capture → audio analysis → music (with audio preview before generating)
 3. **Move** - Device motion capture → movement patterns → music
 4. **Be** - Environmental context (location, weather, time) → atmosphere → music
 
@@ -30,10 +30,16 @@ See `docs/creation-modes.md` for detailed mode specifications.
 **Monorepo Structure:**
 ```
 moment-music/
-├── frontend/  (React + TypeScript + Vite)
-├── backend/   (FastAPI + Python)
-├── docs/      (Design & architecture docs)
-└── refs/      (Reference materials, gitignored)
+├── frontend/          (React + TypeScript + Vite + Tailwind)
+├── backend/           (FastAPI + Python)
+│   ├── app/routers/   (generate, write, listen, move)
+│   ├── app/services/  (engines, jobs, prompts, weather, vision, etc.)
+│   ├── app/prompts/   (LLM prompt templates as .md files)
+│   ├── app/utils/     (audio mixing, helpers)
+│   ├── audio/         (generated audio, gitignored)
+│   └── models/        (AI model checkpoints, gitignored)
+├── docs/              (Design & architecture docs)
+└── refs/              (Reference materials, gitignored)
 ```
 
 **Frontend:** React + TypeScript + Vite on `http://localhost:5173`
@@ -43,17 +49,64 @@ See `docs/architecture.md` for technical details.
 
 ---
 
+## Music Engines
+
+The backend supports multiple music generation engines. Users choose per output type in the Setup page.
+
+| Engine | Type | Hardware | Output Types |
+|--------|------|----------|-------------|
+| **ACE-STEP** (default) | Local | MPS / CUDA / CPU | Instrumental, Song, Narration BG |
+| **HeartMuLa** | Local | CUDA / MPS (36GB+) | Song (lyrics-conditioned) |
+| **Stable Audio Open** | Local | MPS / CUDA / CPU | Instrumental |
+| **Stable Audio API** | Cloud | None (API call) | Instrumental |
+| **Qwen3-TTS** | Local | MPS / CUDA / CPU | Narration voice |
+
+Engine selection is per-output-type and persisted in localStorage. The backend validates engine availability before accepting jobs.
+
+**HeartMuLa env vars** (for hardware migration):
+```bash
+HEARTMULA_DEVICE=cuda          # auto-detected if not set
+HEARTMULA_DTYPE=float16        # float16 for GPU, float32 for CPU
+HEARTMULA_LAZY_LOAD=true       # true saves peak VRAM
+HEARTMULA_VERSION=3B           # model version subfolder
+```
+
+---
+
 ## AI Services
 
 | Service | Purpose | Used In |
 |---------|---------|---------|
-| OpenAI GPT-5.2 | Image captioning, mood interpretation, prompt generation | Write, Be |
-| Stability AI (Stable Audio 2) | Instrumental music generation (text2audio, audio2audio) | All modes |
-| ACE-STEP | Vocal & lyric generation | Song output |
-| Voicebox (Qwen3-TTS) | Narration voice synthesis (local-first, open-source) | Narration output |
-| Gemini API | Alternative LLM reasoning | Advanced processing |
-| OpenWeatherMap | Real-time weather data | Be mode |
-| OpenCage | Geocoding (location → coordinates) | Be mode |
+| OpenAI GPT-5.2 | Image captioning, mood interpretation, prompt generation | All modes |
+| ACE-STEP | Instrumental + vocal music generation | All output types |
+| HeartMuLa | Lyrics-conditioned music (3B model) | Song output (needs 36GB+ VRAM) |
+| Stable Audio Open | Diffusion-based instrumental generation | Instrumental output |
+| Stable Audio API (Cloud) | Cloud-based generation via Stability AI | Instrumental output |
+| Qwen3-TTS | Narration voice synthesis (local, open-source) | Narration output |
+| Open-Meteo | Weather data (free, no API key) | Be mode |
+| Nominatim (OSM) | Reverse geocoding (free, no API key) | Be mode |
+
+---
+
+## Job Queue System
+
+All generation requests go through an async job queue (`app/services/jobs.py`):
+- **Max concurrent:** 1 job at a time (GPU-bound)
+- **Max queue:** 3 active jobs; returns HTTP 503 when full
+- **Polling:** Frontend polls `GET /api/jobs/{id}` every 2 seconds
+- **Cancellation:** Jobs can be cancelled mid-generation
+- **Resume:** Active job persisted in localStorage; resumes on page reload
+
+---
+
+## Style Prompts
+
+Users customize AI generation style via the Prompts page (`/prompts`):
+- **5 prompt keys:** lyrics_style, narration_style, bg_music_style, music_prompt_style, overall_mood
+- **Global prompts:** Apply to all modes by default
+- **Mode overrides:** Per-mode overrides (Write, Listen, Move, Be) with fallback to global
+- **Resolution order:** Mode override → Global prompt → Built-in default
+- **Storage:** localStorage keys `moment-style-prompts` (global) and `moment-style-prompts-{mode}`
 
 ---
 
@@ -62,8 +115,7 @@ See `docs/architecture.md` for technical details.
 **Backend (uv — always use uv, never pip):**
 ```bash
 cd backend
-uv sync                # install all packages
-uv add <package>       # add new dependency
+uv sync
 uv run uvicorn app.main:app --reload --port 8000 --loop asyncio
 ```
 
@@ -79,35 +131,54 @@ npm run dev
 ./dev.sh
 ```
 
+**Individual scripts:**
+```bash
+./run-backend.sh     # backend only
+./run-frontend.sh    # frontend only
+```
+
+---
+
+## Environment Variables
+
+Create `backend/.env` with:
+```bash
+# Required
+OPENAI_API_KEY=sk-...
+
+# Optional — engine-specific
+STABILITY_API_KEY=sk-...    # for Stable Audio API (Cloud)
+HF_TOKEN=hf_...             # for Stable Audio Open (HuggingFace)
+
+# Optional — HeartMuLa tuning
+HEARTMULA_DEVICE=            # auto-detected
+HEARTMULA_DTYPE=float16
+HEARTMULA_LAZY_LOAD=true
+HEARTMULA_VERSION=3B
+
+# Optional — defaults
+DEFAULT_ENGINE=ace_step
+DEFAULT_DURATION=30
+DEFAULT_OUTPUT_TYPE=instrumental
+```
+
+API keys can also be set from the Setup page (`/setup`) in the browser.
+
 ---
 
 ## Tooling Rules
 
 - **Python packages:** Always use `uv add` to add packages, `uv sync` to install. Never use `pip install`.
-- **Environment variables:** Use `python-dotenv` to load API keys and config from `backend/.env`. Never hardcode secrets.
-- **E2E testing:** Use `agent-browser` CLI for browser testing (not Playwright/Cypress directly).
-  ```bash
-  agent-browser open http://localhost:5173   # open app
-  agent-browser snapshot                     # accessibility tree (for AI)
-  agent-browser screenshot                   # capture current state
-  agent-browser click <selector>             # interact with elements
-  agent-browser fill <selector> <text>       # fill form fields
-  ```
+- **Environment variables:** Use `python-dotenv` to load from `backend/.env`. Never hardcode secrets.
+- **E2E testing:** Use `agent-browser` CLI for browser testing.
 
 ---
 
 ## Git Conventions
 
-- **Commit messages:** Follow [Conventional Commits](https://www.conventionalcommits.org/). Format: `<type>: <description>`
-  - `feat:` — New feature
-  - `fix:` — Bug fix
-  - `docs:` — Documentation only
-  - `style:` — Formatting, no logic change
-  - `refactor:` — Code restructuring, no behavior change
-  - `test:` — Adding or updating tests
-  - `chore:` — Build, tooling, config changes
-- **Branching:** Use feature branches off `main`. Merge via PR.
-- **Commit often** — Small, focused commits are preferred over large monolithic ones.
+- **Commit messages:** [Conventional Commits](https://www.conventionalcommits.org/) — `feat:`, `fix:`, `docs:`, `refactor:`, `chore:`
+- **Branching:** Feature branches off `main`. Merge via PR.
+- **Commit often** — Small, focused commits preferred.
 
 ---
 
@@ -116,7 +187,8 @@ npm run dev
 - Dark-mode-first, glass morphism aesthetic
 - Primary color: `#3713ec` (vivid indigo)
 - Font: Space Grotesk (display), system sans-serif (body)
-- Tailwind CSS for styling
+- Tailwind CSS v3.4, custom glass classes in `index.css`
+- Material Symbols icons via Google Fonts CDN
 - Animated gradients, visualizers, ambient UI
 
 See `docs/design-guide.md` for visual design system.
@@ -125,15 +197,51 @@ See `docs/design-guide.md` for visual design system.
 
 ## Key Constraints
 
-- **Mode independence** - Each creation mode works standalone
-- **Output flexibility** - Three output types: Instrumental, Song, Narration
-- **Async pipeline** - AI processing is async; UI shows progress states
-- **API keys external** - All secrets in `.env`, never committed
-- **Audio ephemeral** - Generated audio in `backend/audio/`, gitignored
+- **Mode independence** — Each creation mode works standalone
+- **Output flexibility** — Three output types: Instrumental, Song, Narration
+- **Async pipeline** — Job queue with progress steps; UI shows real-time status
+- **Queue limits** — Max 3 active jobs; HTTP 503 when full
+- **API keys external** — All secrets in `.env` or set via Setup page
+- **Audio ephemeral** — Generated audio in `backend/audio/`, gitignored
+- **Models external** — Checkpoints in `backend/models/`, gitignored
 
 ---
 
-## Documentation Structure
+## API Routes
+
+| Method | Route | Purpose |
+|--------|-------|---------|
+| POST | `/api/generate` | Be mode generation |
+| POST | `/api/write/generate` | Write mode generation (multipart) |
+| POST | `/api/listen/generate` | Listen mode generation (multipart) |
+| POST | `/api/move/generate` | Move mode generation |
+| GET | `/api/jobs/{id}` | Poll job status |
+| POST | `/api/jobs/{id}/cancel` | Cancel a job |
+| GET | `/api/engines` | List available engines |
+| GET | `/api/settings/keys/status` | Check API key status |
+| POST | `/api/settings/keys` | Save API keys |
+| GET | `/audio/{filename}` | Serve generated audio |
+| GET | `/images/{filename}` | Serve generated album art |
+
+---
+
+## Frontend Pages
+
+| Route | Page | Description |
+|-------|------|-------------|
+| `/` | Entryway | Landing / mode selection |
+| `/write` | WriteMode | Text + image → music |
+| `/listen` | ListenMode | Mic capture → music (with audio preview) |
+| `/move` | MoveMode | Motion capture → music |
+| `/be` | BeMode | Environment → music |
+| `/player` | MomentPlayer | Audio playback + details |
+| `/library` | Library | Saved soundscapes |
+| `/setup` | Setup | Engine selection + API keys |
+| `/prompts` | Prompts | Style prompt customization (global + per-mode) |
+
+---
+
+## Documentation
 
 | Document | Focus |
 |----------|-------|

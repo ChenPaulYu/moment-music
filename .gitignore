@@ -64,6 +64,10 @@ backend/audio/*.mp3
 backend/audio/*.wav
 backend/audio/*.flac
 
+# Generated album art
+backend/images/*.png
+backend/images/*.jpg
+
 # Temporary files
 backend/temp_*
 

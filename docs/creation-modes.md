@@ -6,30 +6,33 @@ Each mode captures a different dimension of a moment.
 
 ## Write Mode
 
-**Input:** Text journal + optional image upload
+**Input:** Text journal + optional image upload (including camera capture)
 **Captures:** Inner thoughts, reflections, visual context
+**Route:** `/write`
+**Endpoint:** `POST /api/write/generate` (multipart/form-data)
 
 ### User Flow
-1. User writes a journal entry (up to 500 characters) describing their moment
-2. Optionally uploads an image (photo of current scene, mood board, etc.)
+1. User writes a journal entry describing their moment
+2. Optionally uploads an image or takes a photo with device camera
 3. Selects output type: Instrumental / Song / Narration
 4. Taps "Generate Soundscape"
+5. Sees step-by-step progress (e.g. "Captioning image", "Interpreting mood", "Generating audio")
+6. Navigated to Moment Player on completion
 
 ### Backend Processing
 1. If image provided → GPT-5.2 captioning (objective visual description)
-2. Journal text + image caption → Mood interpretation agent
-3. Agent outputs: mood_keywords, poetic summary, structured music prompt
-4. Music prompt → Stable Audio 2 (or ACE-STEP for Song, Voicebox for Narration)
+2. Journal text + image caption → LLM prompt generation (per output type)
+3. For instrumental: prompt → music engine
+4. For song: lyrics + tags → ACE-STEP or HeartMuLa
+5. For narration: narration text → Qwen3-TTS, BG prompt → engine, then FFmpeg mix
+6. Album art generated in parallel via GPT-5.2 image generation
 
 ### UI Elements
-- Textarea (journal entry, 500 char limit)
-- Image upload button with preview
-- Output type segmented control
-- Generate button
-- Status footer
-
-### Closest Reference
-This is the most direct mapping from the `ai_sonification` prototype. The existing `weather_to_prompt.py` pipeline handles journal + image → music prompt.
+- Textarea (journal entry)
+- Image upload button with preview (supports camera capture via `capture="environment"`)
+- Output type selector (Instrumental / Song / Narration)
+- Generate button with step progress
+- Style prompts passed from `/prompts` page configuration
 
 ---
 
@@ -37,31 +40,37 @@ This is the most direct mapping from the `ai_sonification` prototype. The existi
 
 **Input:** Microphone ambient sound capture
 **Captures:** Sonic environment — the sounds around you right now
+**Route:** `/listen`
+**Endpoint:** `POST /api/listen/generate` (multipart/form-data)
 
 ### User Flow
-1. User taps the large mic button to start recording
-2. Visualizer bars animate during capture (up to configurable duration)
-3. Timer shows elapsed / max time
-4. Recording auto-stops or user taps again to stop
-5. Selects output type, taps Generate
+1. User taps the mic button to start recording
+2. Visualizer bars animate during capture
+3. Timer shows elapsed time
+4. Recording stops on tap or when max duration reached
+5. **Audio preview** — user can play back the recording before generating
+6. Selects output type, taps Generate
+7. Step progress shown during generation
 
 ### Backend Processing
-1. Captured audio sent as reference_audio
-2. Optional: audio analysis for scene description (future)
-3. Audio → audio2audio mode in Stable Audio 2
-4. The captured ambient becomes the seed for transformation
+1. Captured audio sent as `audio` field (webm format)
+2. Audio analyzed for scene description
+3. Analysis + context → LLM prompt generation
+4. Prompt → selected engine for audio generation
+5. Album art generated in parallel
 
 ### UI Elements
 - Large circular mic button (pulsing when active)
 - Audio visualizer bars (animated wave pattern)
-- Timer display (elapsed / max)
-- Output type segmented control
-- Generate button
+- Timer display (elapsed time)
+- **Audio preview player** — play/pause button + progress bar + time display (appears after recording)
+- Output type selector
+- Generate button with step progress
 
 ### Technical Notes
 - Uses Web Audio API + MediaRecorder for browser capture
-- Audio sent as WAV/MP3 to backend
-- Stable Audio's audio2audio with `strength` parameter controls transformation degree
+- Audio sent as WebM to backend
+- Audio preview uses object URL, auto-revoked on new recording or unmount
 
 ---
 
@@ -69,80 +78,98 @@ This is the most direct mapping from the `ai_sonification` prototype. The existi
 
 **Input:** Device motion sensors (accelerometer, gyroscope)
 **Captures:** Physical energy, rhythm, gesture
+**Route:** `/move`
+**Endpoint:** `POST /api/move/generate` (JSON)
 
 ### User Flow
 1. User taps "Start Capture" button
 2. Device motion sensors begin recording
 3. User moves freely — walking, dancing, gesturing
 4. Capture stops after duration or user taps again
-5. Motion data visualized, selects output type, taps Generate
+5. Motion data serialized, selects output type, taps Generate
 
 ### Backend Processing
 1. Motion data (JSON) sent to backend
 2. Motion patterns analyzed: tempo from step frequency, energy from acceleration magnitude, flow from gyroscope smoothness
-3. Patterns mapped to musical parameters (BPM, intensity, texture)
-4. Combined with any environmental data for music prompt
-5. Prompt → Stable Audio 2
+3. Patterns → LLM prompt generation
+4. Prompt → selected engine
+5. Album art generated in parallel
 
 ### UI Elements
 - Large circular "Start Capture" button
-- Device rotation icon indicating motion tracking
-- Motion visualization (during/after capture)
-- Output type segmented control
-- Generate button
-- Status text: "Capture movement to enable generation"
+- Device motion indicators during capture
+- Output type selector
+- Generate button with step progress
 
 ### Technical Notes
 - Uses DeviceMotion API (requires HTTPS and user permission)
 - Fallback for desktop: simplified input or unavailable state
-- Motion data serialized as JSON array of {timestamp, accel, gyro} readings
+- Motion data serialized as JSON
 
 ---
 
 ## Be Mode
 
-**Input:** Auto-detected location + weather + time of day
+**Input:** Location text → auto-detected weather + time of day
 **Captures:** Environmental atmosphere — where and when you are
+**Route:** `/be`
+**Endpoint:** `POST /api/generate` (JSON)
 
 ### User Flow
-1. User taps "Fetch Environment" button
-2. System detects: location (GPS or IP), weather (API), time of day
-3. Environmental data displayed: city, weather condition, time period
-4. User can optionally adjust or add context
-5. Selects output type, taps Generate
+1. User enters a location (e.g. "Taipei 101", "Central Park NYC")
+2. System fetches: geocoding → coordinates → weather data
+3. Environmental data displayed on Moment Player after generation
+4. Selects output type, taps Generate
 
 ### Backend Processing
-1. Location → OpenCage geocoding → lat/lon
-2. Lat/lon → OpenWeatherMap → weather data (temp, humidity, condition, wind)
-3. Time of day derived from local timezone
-4. All context → Mood interpretation agent
-5. Agent outputs prompt optimized for atmospheric/ambient generation
-6. Prompt → Stable Audio 2
+1. Location text → Nominatim geocoding → lat/lon
+2. Lat/lon → Open-Meteo → weather data (temp, humidity, condition, wind)
+3. Weather context → LLM prompt generation
+4. Prompt → selected engine
+5. Album art generated in parallel
 
 ### UI Elements
-- Large "Fetch Environment" button
-- Environmental data display cards (Location, Weather, Time)
-- Output type segmented control
-- Generate button
+- Location text input
+- Output type selector
+- Generate button with step progress
 
-### Closest Reference
-Be mode directly maps to the location/weather pipeline in `ai_sonification` — the `openweather_api.py`, `opencage_api.py`, and geolocation logic.
+### Technical Notes
+- Uses Open-Meteo (free, no API key) for weather
+- Uses Nominatim/OSM (free, no API key) for geocoding
 
 ---
 
-## Output Types (Shared Across Modes)
+## Output Types (Shared Across All Modes)
 
-### Instrumental (Phase 1)
+### Instrumental
 - Pure AI-generated music
-- Engine: Stable Audio 2
-- Parameters: prompt, duration, seed, steps, cfg_scale
+- Available engines: ACE-STEP (default), HeartMuLa, Stable Audio Open, Stable Audio API
+- Parameters: prompt, duration
 
-### Song (Phase 3)
-- AI-generated vocals + lyrics over instrumental
-- Engine: ACE-STEP
-- Requires: melody/backing from Stable Audio + lyric generation
+### Song
+- AI-generated vocals + lyrics
+- Available engines: ACE-STEP (default), HeartMuLa
+- LLM generates lyrics + music tags; engine generates the vocal track
 
-### Narration (Phase 3)
+### Narration
 - Spoken word over ambient soundtrack
-- Engine: Voicebox (Qwen3-TTS, local-first or remote server)
-- Requires: script generation from mood summary + voice synthesis via Voicebox REST API
+- Voice: Qwen3-TTS (local, open-source)
+- Background music: any instrumental engine
+- Mixing: FFmpeg combines voice track + music track at appropriate levels
+- Duration: background music auto-matched to voice duration
+
+---
+
+## Style Prompts
+
+Each mode supports customizable style prompts via the Prompts page (`/prompts`):
+
+| Key | Purpose |
+|-----|---------|
+| `lyrics_style` | Guide lyric writing tone and style |
+| `narration_style` | Guide narration script style |
+| `bg_music_style` | Guide background music for narration |
+| `music_prompt_style` | Guide instrumental music prompt details |
+| `overall_mood` | General mood direction |
+
+Resolution: mode-specific override → global setting → built-in default.

@@ -32,11 +32,10 @@ const ENGINES: {
       {
         label: "Engine",
         options: [
-          "Stable Audio API (Cloud)",
-          "Stable Audio Open",
-          "Magenta RT",
           "ACE-STEP",
           "HeartMuLa",
+          "Stable Audio Open",
+          "Stable Audio API (Cloud)",
         ],
       },
     ],
@@ -63,11 +62,10 @@ const ENGINES: {
       {
         label: "Background Music",
         options: [
-          "Stable Audio API (Cloud)",
-          "Stable Audio Open",
-          "Magenta RT",
           "ACE-STEP",
           "HeartMuLa",
+          "Stable Audio Open",
+          "Stable Audio API (Cloud)",
         ],
       },
     ],
@@ -118,10 +116,10 @@ const ENGINE_KEY_TO_OUTPUT: Record<string, OutputType> = {
 
 function getInitialSelections(): Record<string, string> {
   const defaults: Record<string, string> = {
-    "instrumental.Engine": "Stable Audio API (Cloud)",
+    "instrumental.Engine": "ACE-STEP",
     "vocal.Engine": "ACE-STEP",
     "narration.Voice": "Voicebox / Qwen3-TTS (Local)",
-    "narration.Background Music": "Stable Audio API (Cloud)",
+    "narration.Background Music": "ACE-STEP",
   };
   for (const [stateKey, outputType] of Object.entries(ENGINE_KEY_TO_OUTPUT)) {
     const saved = getDisplayLabel(outputType);
@@ -140,9 +138,11 @@ export default function Setup() {
   const [keyStatus, setKeyStatus] = useState<{
     openai: boolean;
     stability: boolean;
-  }>({ openai: false, stability: false });
+    huggingface: boolean;
+  }>({ openai: false, stability: false, huggingface: false });
   const [openaiKey, setOpenaiKey] = useState("");
   const [stabilityKey, setStabilityKey] = useState("");
+  const [hfKey, setHfKey] = useState("");
   const [keySaving, setKeySaving] = useState(false);
   const [keySaved, setKeySaved] = useState(false);
 
@@ -330,9 +330,38 @@ export default function Setup() {
                     />
                   </div>
 
+                  {/* Hugging Face */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span
+                        className={cn(
+                          "w-2 h-2 rounded-full",
+                          keyStatus.huggingface ? "bg-green-400" : "bg-red-400"
+                        )}
+                      />
+                      <span className="text-xs font-medium text-white/70">
+                        Hugging Face
+                      </span>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder={
+                        keyStatus.huggingface
+                          ? "••••••••"
+                          : "Enter Hugging Face token"
+                      }
+                      value={hfKey}
+                      onChange={(e) => {
+                        setHfKey(e.target.value);
+                        setKeySaved(false);
+                      }}
+                      className="glass-input w-full rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+
                   <button
                     disabled={
-                      keySaving || (!openaiKey && !stabilityKey)
+                      keySaving || (!openaiKey && !stabilityKey && !hfKey)
                     }
                     onClick={async () => {
                       setKeySaving(true);
@@ -342,10 +371,12 @@ export default function Setup() {
                           ...(stabilityKey && {
                             stability_api_key: stabilityKey,
                           }),
+                          ...(hfKey && { hf_token: hfKey }),
                         });
                         setKeySaved(true);
                         setOpenaiKey("");
                         setStabilityKey("");
+                        setHfKey("");
                         const status = await getApiKeyStatus();
                         setKeyStatus(status);
                       } catch {
@@ -356,7 +387,7 @@ export default function Setup() {
                     }}
                     className={cn(
                       "self-end px-4 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                      !openaiKey && !stabilityKey
+                      !openaiKey && !stabilityKey && !hfKey
                         ? "bg-[#131022] text-[#9b92c9]/50 cursor-not-allowed"
                         : "bg-primary/20 text-white border border-primary/40 hover:bg-primary/30 cursor-pointer"
                     )}
