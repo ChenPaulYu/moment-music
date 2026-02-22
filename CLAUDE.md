@@ -167,6 +167,9 @@ HEARTMULA_DTYPE=float16
 HEARTMULA_LAZY_LOAD=true
 HEARTMULA_VERSION=3B
 
+# Optional — ACE-STEP LLM thinking (chain-of-thought before diffusion)
+ACE_STEP_THINKING=false    # true = better quality (+~34s), false = faster (DiT only)
+
 # Optional — defaults
 DEFAULT_ENGINE=ace_step
 DEFAULT_DURATION=30
@@ -261,3 +264,4 @@ See `docs/design-guide.md` for visual design system.
 | `docs/creation-modes.md` | Detailed specs for Write, Listen, Move, Be modes |
 | `docs/design-guide.md` | Visual design system, colors, typography, components |
 | `docs/ai-pipeline.md` | AI services, prompt engineering, generation flow |
+| `docs/async-pipeline.md` | Job queue, concurrency control, polling, error handling |

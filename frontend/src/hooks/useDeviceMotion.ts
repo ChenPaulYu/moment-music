@@ -10,6 +10,7 @@ type InputSource = "device" | "pointer" | null;
 
 interface DeviceMotionState {
   isCapturing: boolean;
+  elapsed: number;
   readings: MotionReading[];
   inputSource: InputSource;
   start: () => Promise<void>;
@@ -35,17 +36,21 @@ async function requestIOSPermission(): Promise<boolean> {
   return true; // non-iOS, no permission needed
 }
 
-export function useDeviceMotion(): DeviceMotionState {
+export function useDeviceMotion(maxDuration = 10): DeviceMotionState {
   const [isCapturing, setIsCapturing] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const [readings, setReadings] = useState<MotionReading[]>([]);
   const [inputSource, setInputSource] = useState<InputSource>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
   const prevPointer = useRef<{ x: number; y: number; time: number } | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval>>();
+  const startTimeRef = useRef(0);
 
   const stop = useCallback(() => {
     cleanupRef.current?.();
     cleanupRef.current = null;
     prevPointer.current = null;
+    clearInterval(timerRef.current);
     setIsCapturing(false);
   }, []);
 
@@ -112,7 +117,15 @@ export function useDeviceMotion(): DeviceMotionState {
 
   const start = useCallback(async () => {
     setReadings([]);
+    setElapsed(0);
     setIsCapturing(true);
+    startTimeRef.current = Date.now();
+
+    timerRef.current = setInterval(() => {
+      const secs = (Date.now() - startTimeRef.current) / 1000;
+      setElapsed(secs);
+      if (secs >= maxDuration) stop();
+    }, 100);
 
     if (hasNativeMotion()) {
       const granted = await requestIOSPermission();
@@ -124,15 +137,16 @@ export function useDeviceMotion(): DeviceMotionState {
     }
 
     startPointerFallback();
-  }, [startDeviceMotion, startPointerFallback]);
+  }, [maxDuration, stop, startDeviceMotion, startPointerFallback]);
 
   const toJSON = useCallback(() => JSON.stringify(readings), [readings]);
 
   useEffect(() => {
     return () => {
       cleanupRef.current?.();
+      clearInterval(timerRef.current);
     };
   }, []);
 
-  return { isCapturing, readings, inputSource, start, stop, toJSON };
+  return { isCapturing, elapsed, readings, inputSource, start, stop, toJSON };
 }

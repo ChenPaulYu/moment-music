@@ -3,7 +3,9 @@ export type StylePromptKey =
   | "narration_style"
   | "bg_music_style"
   | "music_prompt_style"
-  | "overall_mood";
+  | "overall_mood"
+  | "audio_analysis_style"
+  | "album_art_style";
 
 const STORAGE_KEY = "moment-style-prompts";
 
@@ -17,6 +19,8 @@ const DEFAULTS: Record<StylePromptKey, string> = {
   music_prompt_style:
     "Music prompts should be specific about instruments, tempo, mood, and atmosphere. Include genre hints and emotional texture.",
   overall_mood: "",
+  audio_analysis_style: "",
+  album_art_style: "",
 };
 
 function readStorage(): Record<string, string> {

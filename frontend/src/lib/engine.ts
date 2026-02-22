@@ -50,6 +50,22 @@ export function setAlbumArtEnabled(enabled: boolean): void {
   localStorage.setItem(ALBUM_ART_KEY, String(enabled));
 }
 
+const CAPTURE_DURATION_KEY = "moment-capture-duration";
+const DEFAULT_CAPTURE_DURATION = 10;
+
+export function getCaptureDuration(): number {
+  try {
+    const raw = localStorage.getItem(CAPTURE_DURATION_KEY);
+    return raw ? Number(raw) : DEFAULT_CAPTURE_DURATION;
+  } catch {
+    return DEFAULT_CAPTURE_DURATION;
+  }
+}
+
+export function setCaptureDuration(seconds: number): void {
+  localStorage.setItem(CAPTURE_DURATION_KEY, String(seconds));
+}
+
 export function getDisplayLabel(outputType: OutputType): string {
   const stored = readStorage();
   const engine = stored[outputType];

@@ -32,6 +32,7 @@ DEFAULT_OUTPUT_TYPE = os.getenv("DEFAULT_OUTPUT_TYPE", "instrumental")
 
 class GenerateRequest(BaseModel):
     location: str
+    feeling: str = ""
     engine: str = DEFAULT_ENGINE
     duration: int = DEFAULT_DURATION
     output_type: str = DEFAULT_OUTPUT_TYPE  # "instrumental" | "song" | "narration"
@@ -43,13 +44,17 @@ def _uid() -> str:
     return uuid4().hex[:12]
 
 
-def _get_steps(output_type: str) -> list[str]:
+def _get_steps(output_type: str, generate_image: bool = False) -> list[str]:
     if output_type == "narration":
-        return ["Interpreting mood", "Writing narration", "Generating voice", "Generating background music", "Mixing audio", "Finalizing"]
+        steps = ["Interpreting mood", "Writing narration", "Generating voice", "Generating background music", "Mixing audio"]
     elif output_type == "song":
-        return ["Interpreting mood", "Composing lyrics & tags", "Generating song", "Finalizing"]
+        steps = ["Interpreting mood", "Composing lyrics & tags", "Generating song"]
     else:
-        return ["Interpreting mood", "Generating audio", "Finalizing"]
+        steps = ["Interpreting mood", "Generating audio"]
+    if generate_image:
+        steps.append("Generating album art")
+    steps.append("Finalizing")
+    return steps
 
 
 @router.post("/generate")
@@ -97,7 +102,7 @@ async def generate(req: GenerateRequest):
             content={"error": "Server is busy. Please try again in a moment."},
         )
 
-    steps = _get_steps(req.output_type)
+    steps = _get_steps(req.output_type, generate_image=req.generate_image)
     job_id = job_store.create(mode="be", output_type=req.output_type, steps=steps)
 
     async def _run():
@@ -142,7 +147,7 @@ async def _handle_instrumental(req, engine, job_id: str | None = None):
         raise ValueError("Failed to fetch weather data")
     weather["city"] = req.location
 
-    interpretation = await interpret_weather_to_music_prompt(weather, duration=req.duration, style_prompts=req.style_prompts)
+    interpretation = await interpret_weather_to_music_prompt(weather, duration=req.duration, style_prompts=req.style_prompts, feeling=req.feeling)
 
     if job_id:
         job_store.update_step(job_id, 1)
@@ -153,31 +158,33 @@ async def _handle_instrumental(req, engine, job_id: str | None = None):
     filename = f"{_uid()}.mp3"
     output_path = AUDIO_DIR / filename
 
-    # Generate audio (and optionally album art in parallel)
+    # Start album art in background (API call, doesn't need GPU)
+    image_task = None
     if req.generate_image:
-        _, img_filename = await asyncio.gather(
-            engine.generate(
-                prompt=interpretation.suggested_prompt,
-                duration=req.duration,
-                output_path=output_path,
-            ),
+        image_task = asyncio.create_task(
             generate_album_art(
                 interpretation.summary,
                 interpretation.mood_keywords,
                 weather["weather_desc"],
-            ),
+                style_prompts=req.style_prompts,
+            )
         )
-    else:
-        await engine.generate(
-            prompt=interpretation.suggested_prompt,
-            duration=req.duration,
-            output_path=output_path,
-        )
-        img_filename = None
+
+    await engine.generate(
+        prompt=interpretation.suggested_prompt,
+        duration=req.duration,
+        output_path=output_path,
+    )
     engine.unload()
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, 2)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, 2)
+        job_store.update_step(job_id, 3 if req.generate_image else 2)
 
     result = {
         "output_type": "instrumental",
@@ -210,7 +217,7 @@ async def _handle_song(req, engine, job_id: str | None = None):
         raise ValueError("Failed to fetch weather data")
     weather["city"] = req.location
 
-    interpretation = await interpret_weather_to_song(weather, duration=req.duration, style_prompts=req.style_prompts)
+    interpretation = await interpret_weather_to_song(weather, duration=req.duration, style_prompts=req.style_prompts, feeling=req.feeling)
 
     if job_id:
         job_store.update_step(job_id, 1)
@@ -230,34 +237,34 @@ async def _handle_song(req, engine, job_id: str | None = None):
             engine.unload()
             return None
 
+    image_task = None
     if req.generate_image:
-        _, img_filename = await asyncio.gather(
-            engine.generate(
-                prompt=interpretation.music_tags,
-                duration=song_duration,
-                output_path=output_path,
-                lyrics=interpretation.lyrics,
-                tags=interpretation.music_tags,
-            ),
+        image_task = asyncio.create_task(
             generate_album_art(
                 interpretation.summary,
                 interpretation.mood_keywords,
                 weather["weather_desc"],
-            ),
+                style_prompts=req.style_prompts,
+            )
         )
-    else:
-        await engine.generate(
-            prompt=interpretation.music_tags,
-            duration=song_duration,
-            output_path=output_path,
-            lyrics=interpretation.lyrics,
-            tags=interpretation.music_tags,
-        )
-        img_filename = None
+
+    await engine.generate(
+        prompt=interpretation.music_tags,
+        duration=song_duration,
+        output_path=output_path,
+        lyrics=interpretation.lyrics,
+        tags=interpretation.music_tags,
+    )
     engine.unload()
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, 3)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, 3)
+        job_store.update_step(job_id, 4 if req.generate_image else 3)
 
     result = {
         "output_type": "song",
@@ -291,7 +298,7 @@ async def _handle_narration(req, engine, job_id: str | None = None):
         raise ValueError("Failed to fetch weather data")
     weather["city"] = req.location
 
-    interpretation = await interpret_weather_to_narration(weather, duration=req.duration, style_prompts=req.style_prompts)
+    interpretation = await interpret_weather_to_narration(weather, duration=req.duration, style_prompts=req.style_prompts, feeling=req.feeling)
 
     if job_id:
         job_store.update_step(job_id, 1)
@@ -314,6 +321,7 @@ async def _handle_narration(req, engine, job_id: str | None = None):
                 interpretation.summary,
                 interpretation.mood_keywords,
                 weather["weather_desc"],
+                style_prompts=req.style_prompts,
             )
         )
 
@@ -357,8 +365,14 @@ async def _handle_narration(req, engine, job_id: str | None = None):
     final_path = AUDIO_DIR / final_filename
     await mix_narration_and_music(voice_path, music_path, final_path)
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, 5)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, 5)
+        job_store.update_step(job_id, 6 if req.generate_image else 5)
 
     result = {
         "output_type": "narration",
@@ -371,8 +385,7 @@ async def _handle_narration(req, engine, job_id: str | None = None):
         "engine": req.engine,
         "audio_url": f"/audio/{final_filename}",
     }
-    if image_task:
-        img_filename = await image_task
+    if img_filename:
         result["image_url"] = f"/images/{img_filename}"
     return result
 

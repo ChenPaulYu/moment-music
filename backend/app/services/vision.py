@@ -32,6 +32,6 @@ async def caption_image(image_bytes: bytes, mime_type: str) -> str:
                 ],
             },
         ],
-        max_tokens=300,
+        max_completion_tokens=300,
     )
     return response.choices[0].message.content.strip()

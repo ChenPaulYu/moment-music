@@ -61,6 +61,9 @@ export default function BeMode() {
   const [showKeyDialog, setShowKeyDialog] = useState(false);
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
 
+  const [feeling, setFeeling] = useState("");
+  const FEELING_MAX_WORDS = 30;
+
   const [envData, setEnvData] = useState<EnvironmentData>({
     location: "—",
     weather: "—",
@@ -111,20 +114,27 @@ export default function BeMode() {
     );
   };
 
+  const pollingRef = useRef(false);
   const startPolling = useCallback((jid: string) => {
     pollRef.current = setInterval(async () => {
+      if (pollingRef.current) return; // skip if previous poll still in-flight
+      pollingRef.current = true;
       try {
         const job = await getJobStatus(jid);
-        setSteps(job.steps);
-        setCurrentStep(job.step);
-        setQueuePosition(job.queue_position);
+        setSteps((prev) =>
+          prev.length === job.steps.length && prev.every((s, i) => s === job.steps[i])
+            ? prev
+            : job.steps
+        );
+        setCurrentStep((prev) => (prev === job.step ? prev : job.step));
+        setQueuePosition((prev) => (prev === job.queue_position ? prev : job.queue_position));
 
         if (job.status === "completed") {
           clearInterval(pollRef.current);
           clearActiveJob();
           setCurrentStep(job.steps.length);
           await new Promise((r) => setTimeout(r, 500));
-          navigate("/player", { state: job.result });
+          navigate(`/player/${jid}`, { state: job.result });
         } else if (job.status === "failed") {
           clearInterval(pollRef.current);
           clearActiveJob();
@@ -143,6 +153,8 @@ export default function BeMode() {
         setGenerating(false);
         setJobId(null);
         setError("Generation session lost. Please try again.");
+      } finally {
+        pollingRef.current = false;
       }
     }, 2000);
   }, [navigate]);
@@ -185,6 +197,7 @@ export default function BeMode() {
     try {
       const { job_id } = await generateBe({
         location: locationName,
+        feeling: feeling.trim() || undefined,
         outputType,
         engine: getEngineForOutput(outputType),
         generate_image: getAlbumArtEnabled(),
@@ -228,7 +241,7 @@ export default function BeMode() {
         <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tight text-white mb-2 text-center">
           Tune into your
         </h1>
-        <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tight text-center text-gradient mb-8 sm:mb-12">
+        <h1 className="text-3xl sm:text-4xl md:text-6xl font-bold tracking-tight text-center text-gradient mb-10 sm:mb-12">
           surroundings
         </h1>
       </AnimateIn>
@@ -239,11 +252,11 @@ export default function BeMode() {
           onClick={handleFetchEnvironment}
           disabled={fetching || fetched}
           className={cn(
-            "relative w-44 h-44 sm:w-56 sm:h-56 md:w-64 md:h-64 rounded-full flex flex-col items-center justify-center gap-3",
+            "relative w-56 h-56 sm:w-56 sm:h-56 md:w-64 md:h-64 rounded-full flex flex-col items-center justify-center gap-2 sm:gap-3",
             "bg-background-dark/60 border border-white/10 cursor-pointer",
             "hover:border-primary/30 transition-all duration-500",
             "disabled:cursor-not-allowed",
-            "mb-12",
+            "mb-8 sm:mb-12",
             fetched && "border-primary/30 shadow-[0_0_40px_rgba(99,71,255,0.2)]"
           )}
         >
@@ -278,7 +291,7 @@ export default function BeMode() {
 
       {/* Environment data cards */}
       <AnimateIn delay={300}>
-        <GlassPanel className="w-full max-w-2xl p-6 mb-8">
+        <GlassPanel className="w-full max-w-2xl p-4 sm:p-6 mb-8">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
             {[
               {
@@ -302,7 +315,7 @@ export default function BeMode() {
             ].map((card) => (
               <div
                 key={card.label}
-                className="glass-panel rounded-lg p-4 flex flex-col items-center text-center gap-2"
+                className="glass-panel rounded-lg px-4 py-5 sm:p-4 flex flex-col items-center text-center gap-2"
               >
                 <MaterialIcon
                   icon={card.icon}
@@ -321,6 +334,42 @@ export default function BeMode() {
         </GlassPanel>
       </AnimateIn>
 
+      {/* Feeling textarea */}
+      {fetched && (
+        <AnimateIn delay={350}>
+          <div className="w-full max-w-2xl mb-8 px-1 sm:px-0">
+            <label className="block text-[10px] font-bold tracking-widest uppercase text-white/40 mb-2">
+              How are you feeling? <span className="normal-case tracking-normal font-normal">(optional)</span>
+            </label>
+            <textarea
+              value={feeling}
+              onChange={(e) => {
+                const words = e.target.value.split(/\s+/).filter(Boolean);
+                if (words.length <= FEELING_MAX_WORDS) {
+                  setFeeling(e.target.value);
+                }
+              }}
+              disabled={generating}
+              placeholder="Calm and peaceful, watching the sunset fade..."
+              rows={3}
+              className="glass-input w-full rounded-xl px-5 py-3.5 text-sm resize-none"
+            />
+            <div className="flex justify-end mt-1">
+              <span
+                className={cn(
+                  "text-xs",
+                  feeling.split(/\s+/).filter(Boolean).length >= FEELING_MAX_WORDS
+                    ? "text-red-400"
+                    : "text-white/30"
+                )}
+              >
+                {feeling.split(/\s+/).filter(Boolean).length}/{FEELING_MAX_WORDS} words
+              </span>
+            </div>
+          </div>
+        </AnimateIn>
+      )}
+
       {/* Output type + Generate */}
       <AnimateIn delay={400}>
         <OutputTypeSelector
@@ -338,11 +387,12 @@ export default function BeMode() {
         />
         {generating && (
           <>
-            {queuePosition > 0 ? (
+            {queuePosition > 0 && (
               <p className="text-white/50 text-sm mt-4 text-center">
                 Waiting in queue (position #{queuePosition})...
               </p>
-            ) : (
+            )}
+            {queuePosition === 0 && steps.length > 0 && (
               <GenerationSteps steps={steps} currentStep={currentStep} />
             )}
             <div className="flex justify-center">

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 from pathlib import Path
@@ -18,6 +19,30 @@ from app.services.jobs import job_store
 load_dotenv()
 
 app = FastAPI(title="Moment Music API")
+
+
+# --- Heartbeat checker: auto-cancel jobs when frontend stops polling ---
+
+_heartbeat_task = None
+
+
+async def _heartbeat_loop():
+    """Periodically cancel jobs whose frontend has gone silent."""
+    while True:
+        await asyncio.sleep(10)
+        job_store.cancel_stale()
+
+
+@app.on_event("startup")
+async def _start_heartbeat():
+    global _heartbeat_task
+    _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_heartbeat():
+    if _heartbeat_task:
+        _heartbeat_task.cancel()
 
 # CORS — allow frontend dev server
 app.add_middleware(
@@ -46,6 +71,8 @@ def get_job_status(job_id: str):
     job = job_store.get(job_id)
     if not job:
         return JSONResponse(status_code=404, content={"error": "Job not found"})
+    # Heartbeat: each poll proves the frontend is still alive
+    job_store.touch(job_id)
     return {
         "id": job.id,
         "status": job.status,

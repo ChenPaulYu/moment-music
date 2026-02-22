@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import PageLayout from "@/components/layout/PageLayout";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import AnimateIn from "@/components/animation/AnimateIn";
@@ -60,6 +61,20 @@ const CARDS: PromptCard[] = [
     icon: "mood",
     color: "text-amber-400",
     hint: "Optional — applies globally to all outputs (leave empty for no override)",
+  },
+  {
+    key: "audio_analysis_style",
+    label: "Audio Analysis",
+    icon: "hearing",
+    color: "text-cyan-400",
+    hint: "Optional — guide how ambient audio is described in Listen mode (leave empty for default)",
+  },
+  {
+    key: "album_art_style",
+    label: "Album Art",
+    icon: "image",
+    color: "text-orange-400",
+    hint: "Optional — guide the style of AI-generated album cover art (leave empty for default)",
   },
 ];
 
@@ -258,8 +273,16 @@ function ModeCards({ mode }: { mode: CreationMode }) {
   );
 }
 
+const VALID_TABS = new Set<string>(TABS.map((t) => t.key));
+
 export default function Prompts() {
-  const [activeTab, setActiveTab] = useState<TabKey>("global");
+  const { tab } = useParams<{ tab?: string }>();
+  const navigate = useNavigate();
+  const activeTab: TabKey = tab && VALID_TABS.has(tab) ? (tab as TabKey) : "global";
+
+  const setActiveTab = (key: TabKey) => {
+    navigate(key === "global" ? "/prompts" : `/prompts/${key}`, { replace: true });
+  };
 
   return (
     <PageLayout>
@@ -275,19 +298,19 @@ export default function Prompts() {
 
         {/* Tab row */}
         <div className="flex gap-1 p-1 rounded-xl bg-[#131022] border border-[#292348]">
-          {TABS.map((tab) => (
+          {TABS.map((t) => (
             <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
               className={cn(
                 "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition-all cursor-pointer",
-                activeTab === tab.key
+                activeTab === t.key
                   ? "bg-primary/20 text-white border border-primary/30"
                   : "text-[#9b92c9] hover:text-white hover:bg-white/5"
               )}
             >
-              <MaterialIcon icon={tab.icon} size={14} />
-              <span className="hidden sm:inline">{tab.label}</span>
+              <MaterialIcon icon={t.icon} size={14} />
+              <span className="hidden sm:inline">{t.label}</span>
             </button>
           ))}
         </div>

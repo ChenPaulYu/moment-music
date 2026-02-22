@@ -19,9 +19,10 @@ export default function App() {
         <Route path="/listen" element={<ListenMode />} />
         <Route path="/move" element={<MoveMode />} />
         <Route path="/be" element={<BeMode />} />
-        <Route path="/player" element={<MomentPlayer />} />
+        <Route path="/player/:jobId" element={<MomentPlayer />} />
         <Route path="/setup" element={<Setup />} />
         <Route path="/prompts" element={<Prompts />} />
+        <Route path="/prompts/:tab" element={<Prompts />} />
       </Routes>
     </BrowserRouter>
   );

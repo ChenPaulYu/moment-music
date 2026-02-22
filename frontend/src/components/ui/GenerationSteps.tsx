@@ -1,3 +1,4 @@
+import { memo } from "react";
 import MaterialIcon from "./MaterialIcon";
 import { cn } from "@/lib/utils";
 
@@ -7,7 +8,7 @@ interface GenerationStepsProps {
   className?: string;
 }
 
-export default function GenerationSteps({ steps, currentStep, className }: GenerationStepsProps) {
+export default memo(function GenerationSteps({ steps, currentStep, className }: GenerationStepsProps) {
   return (
     <div className={cn("w-full max-w-md space-y-3 mt-4", className)}>
       {steps.map((label, i) => {
@@ -51,4 +52,4 @@ export default function GenerationSteps({ steps, currentStep, className }: Gener
       })}
     </div>
   );
-}
+});

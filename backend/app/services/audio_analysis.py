@@ -19,7 +19,7 @@ def _get_client() -> AsyncOpenAI:
     return _client
 
 
-async def analyze_audio(audio_bytes: bytes, mime_type: str) -> str:
+async def analyze_audio(audio_bytes: bytes, mime_type: str, style_prompts: dict | None = None) -> str:
     """Analyze captured ambient audio using gpt-audio and return a description."""
     # Convert to WAV (gpt-audio only accepts WAV/MP3)
     audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
@@ -29,6 +29,8 @@ async def analyze_audio(audio_bytes: bytes, mime_type: str) -> str:
 
     b64_audio = base64.b64encode(wav_bytes).decode("utf-8")
     system_prompt = load_prompt("listen_analysis_system.md")
+    if style_prompts and style_prompts.get("audio_analysis_style"):
+        system_prompt += "\n\n## Additional Analysis Guidelines\n" + style_prompts["audio_analysis_style"]
 
     response = await _get_client().chat.completions.create(
         model=AUDIO_ANALYSIS_MODEL,

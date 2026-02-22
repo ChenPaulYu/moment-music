@@ -74,6 +74,7 @@ export async function generateSoundscape(
 
 export async function generateBe(params: {
   location: string;
+  feeling?: string;
   outputType: OutputType;
   engine?: string;
   duration?: number;
@@ -86,6 +87,7 @@ export async function generateBe(params: {
     body: JSON.stringify({
       location: params.location,
       output_type: params.outputType,
+      ...(params.feeling && { feeling: params.feeling }),
       ...(params.engine && { engine: params.engine }),
       ...(params.duration && { duration: params.duration }),
       ...(params.generate_image !== undefined && { generate_image: params.generate_image }),

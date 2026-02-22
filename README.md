@@ -96,6 +96,30 @@
 
 6. **Open** http://localhost:5173
 
+## Mobile Testing with Cloudflare Tunnel
+
+Move mode requires real device motion sensors, and Listen mode needs a microphone — so testing on a physical phone is essential. Use [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) to expose your local dev server over HTTPS (required for `DeviceMotionEvent` and `getUserMedia`).
+
+1. **Install cloudflared:**
+   ```bash
+   brew install cloudflared        # macOS
+   # or see https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
+   ```
+
+2. **Start the app** (backend binds to `0.0.0.0`):
+   ```bash
+   ./dev.sh
+   ```
+
+3. **Open a tunnel** (in a separate terminal):
+   ```bash
+   cloudflared tunnel --url http://localhost:5173
+   ```
+
+   This prints a public URL like `https://abc-xyz.trycloudflare.com`. Open it on your phone.
+
+Only one tunnel is needed — Vite's dev proxy forwards `/api`, `/audio`, and `/images` requests to the backend automatically. Vite is already configured to accept `.trycloudflare.com` hosts (see `vite.config.ts`).
+
 ## Architecture
 
 ```
@@ -180,6 +204,7 @@ cd frontend && npx tsc --noEmit
 | [Creation Modes](docs/creation-modes.md) | Detailed specs for all four modes |
 | [Design Guide](docs/design-guide.md) | Visual design system, colors, typography |
 | [AI Pipeline](docs/ai-pipeline.md) | AI services, engines, prompt generation |
+| [Async Pipeline](docs/async-pipeline.md) | Job queue, concurrency, polling, error handling |
 | [CLAUDE.md](CLAUDE.md) | Developer guide for Claude Code |
 
 ## Tech Stack

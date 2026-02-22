@@ -15,7 +15,6 @@ from app.services.prompt_generation import (
     interpret_write_to_narration,
     interpret_write_to_song,
 )
-from app.services.vision import caption_image
 from app.utils.audio_mixing import mix_narration_and_music
 from app.utils.helpers import estimate_song_duration, get_audio_duration
 
@@ -31,16 +30,16 @@ def _uid() -> str:
     return uuid4().hex[:12]
 
 
-def _get_steps(output_type: str, has_image: bool = False) -> list[str]:
-    steps = []
-    if has_image:
-        steps.append("Captioning image")
+def _get_steps(output_type: str, generate_image: bool = False) -> list[str]:
     if output_type == "narration":
-        steps += ["Interpreting mood", "Writing narration", "Generating voice", "Generating background music", "Mixing audio", "Finalizing"]
+        steps = ["Interpreting mood", "Writing narration", "Generating voice", "Generating background music", "Mixing audio"]
     elif output_type == "song":
-        steps += ["Interpreting mood", "Composing lyrics & tags", "Generating song", "Finalizing"]
+        steps = ["Interpreting mood", "Composing lyrics & tags", "Generating song"]
     else:
-        steps += ["Interpreting mood", "Generating audio", "Finalizing"]
+        steps = ["Interpreting mood", "Generating audio"]
+    if generate_image:
+        steps.append("Generating album art")
+    steps.append("Finalizing")
     return steps
 
 
@@ -117,7 +116,7 @@ async def generate_write(
             content={"error": "Server is busy. Please try again in a moment."},
         )
 
-    steps = _get_steps(output_type, has_image=bool(has_image))
+    steps = _get_steps(output_type, generate_image=want_image)
     job_id = job_store.create(mode="write", output_type=output_type, steps=steps)
 
     async def _run():
@@ -126,22 +125,12 @@ async def generate_write(
                 if job_store.is_cancelled(job_id):
                     return
 
-                step = 0
-                # Caption image if provided
-                image_caption = None
-                if image_bytes:
-                    job_store.update_step(job_id, step)
-                    image_caption = await caption_image(image_bytes, image_mime)
-                    step += 1
-                    if job_store.is_cancelled(job_id):
-                        return
-
                 if output_type == "narration":
-                    result = await _handle_narration(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id, step_offset=step)
+                    result = await _handle_narration(entry_text, image_bytes, image_mime, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id)
                 elif output_type == "song":
-                    result = await _handle_song(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id, step_offset=step)
+                    result = await _handle_song(entry_text, image_bytes, image_mime, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id)
                 else:
-                    result = await _handle_instrumental(entry_text, image_caption, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id, step_offset=step)
+                    result = await _handle_instrumental(entry_text, image_bytes, image_mime, audio_engine, engine, duration, want_image, parsed_styles, job_id=job_id)
 
                 if result is not None:
                     job_store.complete(job_id, result)
@@ -155,16 +144,19 @@ async def generate_write(
     return {"job_id": job_id}
 
 
-async def _handle_instrumental(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None, step_offset: int = 0):
+async def _handle_instrumental(text, image_bytes, image_mime, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None):
     if job_id:
-        job_store.update_step(job_id, step_offset)
+        job_store.update_step(job_id, 0)
         if job_store.is_cancelled(job_id):
             return None
 
-    interpretation = await interpret_write_to_music_prompt(text, image_caption, duration=duration, style_prompts=style_prompts)
+    interpretation = await interpret_write_to_music_prompt(
+        text, duration=duration, style_prompts=style_prompts,
+        image_bytes=image_bytes, image_mime=image_mime,
+    )
 
     if job_id:
-        job_store.update_step(job_id, step_offset + 1)
+        job_store.update_step(job_id, 1)
         if job_store.is_cancelled(job_id):
             engine.unload()
             return None
@@ -172,31 +164,32 @@ async def _handle_instrumental(text, image_caption, engine, engine_name, duratio
     filename = f"{_uid()}.mp3"
     output_path = AUDIO_DIR / filename
 
+    image_task = None
     if generate_image:
-        art_desc = image_caption or text[:100]
-        _, img_filename = await asyncio.gather(
-            engine.generate(
-                prompt=interpretation.suggested_prompt,
-                duration=duration,
-                output_path=output_path,
-            ),
+        image_task = asyncio.create_task(
             generate_album_art(
                 interpretation.summary,
                 interpretation.mood_keywords,
-                art_desc,
-            ),
+                text[:100],
+                style_prompts=style_prompts,
+            )
         )
-    else:
-        await engine.generate(
-            prompt=interpretation.suggested_prompt,
-            duration=duration,
-            output_path=output_path,
-        )
-        img_filename = None
+
+    await engine.generate(
+        prompt=interpretation.suggested_prompt,
+        duration=duration,
+        output_path=output_path,
+    )
     engine.unload()
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, 2)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, step_offset + 2)
+        job_store.update_step(job_id, 3 if generate_image else 2)
 
     result = {
         "mode": "write",
@@ -212,16 +205,19 @@ async def _handle_instrumental(text, image_caption, engine, engine_name, duratio
     return result
 
 
-async def _handle_song(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None, step_offset: int = 0):
+async def _handle_song(text, image_bytes, image_mime, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None):
     if job_id:
-        job_store.update_step(job_id, step_offset)
+        job_store.update_step(job_id, 0)
         if job_store.is_cancelled(job_id):
             return None
 
-    interpretation = await interpret_write_to_song(text, image_caption, duration=duration, style_prompts=style_prompts)
+    interpretation = await interpret_write_to_song(
+        text, duration=duration, style_prompts=style_prompts,
+        image_bytes=image_bytes, image_mime=image_mime,
+    )
 
     if job_id:
-        job_store.update_step(job_id, step_offset + 1)
+        job_store.update_step(job_id, 1)
         if job_store.is_cancelled(job_id):
             engine.unload()
             return None
@@ -232,40 +228,39 @@ async def _handle_song(text, image_caption, engine, engine_name, duration, gener
     output_path = AUDIO_DIR / filename
 
     if job_id:
-        job_store.update_step(job_id, step_offset + 2)
+        job_store.update_step(job_id, 2)
         if job_store.is_cancelled(job_id):
             engine.unload()
             return None
 
+    image_task = None
     if generate_image:
-        art_desc = image_caption or text[:100]
-        _, img_filename = await asyncio.gather(
-            engine.generate(
-                prompt=interpretation.music_tags,
-                duration=song_duration,
-                output_path=output_path,
-                lyrics=interpretation.lyrics,
-                tags=interpretation.music_tags,
-            ),
+        image_task = asyncio.create_task(
             generate_album_art(
                 interpretation.summary,
                 interpretation.mood_keywords,
-                art_desc,
-            ),
+                text[:100],
+                style_prompts=style_prompts,
+            )
         )
-    else:
-        await engine.generate(
-            prompt=interpretation.music_tags,
-            duration=song_duration,
-            output_path=output_path,
-            lyrics=interpretation.lyrics,
-            tags=interpretation.music_tags,
-        )
-        img_filename = None
+
+    await engine.generate(
+        prompt=interpretation.music_tags,
+        duration=song_duration,
+        output_path=output_path,
+        lyrics=interpretation.lyrics,
+        tags=interpretation.music_tags,
+    )
     engine.unload()
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, 3)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, step_offset + 3)
+        job_store.update_step(job_id, 4 if generate_image else 3)
 
     result = {
         "mode": "write",
@@ -282,16 +277,19 @@ async def _handle_song(text, image_caption, engine, engine_name, duration, gener
     return result
 
 
-async def _handle_narration(text, image_caption, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None, step_offset: int = 0):
+async def _handle_narration(text, image_bytes, image_mime, engine, engine_name, duration, generate_image=True, style_prompts=None, job_id: str | None = None):
     if job_id:
-        job_store.update_step(job_id, step_offset)
+        job_store.update_step(job_id, 0)
         if job_store.is_cancelled(job_id):
             return None
 
-    interpretation = await interpret_write_to_narration(text, image_caption, duration=duration, style_prompts=style_prompts)
+    interpretation = await interpret_write_to_narration(
+        text, duration=duration, style_prompts=style_prompts,
+        image_bytes=image_bytes, image_mime=image_mime,
+    )
 
     if job_id:
-        job_store.update_step(job_id, step_offset + 1)
+        job_store.update_step(job_id, 1)
         if job_store.is_cancelled(job_id):
             engine.unload()
             return None
@@ -305,17 +303,17 @@ async def _handle_narration(text, image_caption, engine, engine_name, duration, 
 
     image_task = None
     if generate_image:
-        art_desc = image_caption or text[:100]
         image_task = asyncio.create_task(
             generate_album_art(
                 interpretation.summary,
                 interpretation.mood_keywords,
-                art_desc,
+                text[:100],
+                style_prompts=style_prompts,
             )
         )
 
     if job_id:
-        job_store.update_step(job_id, step_offset + 2)
+        job_store.update_step(job_id, 2)
         if job_store.is_cancelled(job_id):
             engine.unload()
             return None
@@ -330,7 +328,7 @@ async def _handle_narration(text, image_caption, engine, engine_name, duration, 
     voice_duration = await asyncio.to_thread(get_audio_duration, voice_path)
 
     if job_id:
-        job_store.update_step(job_id, step_offset + 3)
+        job_store.update_step(job_id, 3)
         if job_store.is_cancelled(job_id):
             engine.unload()
             return None
@@ -343,7 +341,7 @@ async def _handle_narration(text, image_caption, engine, engine_name, duration, 
     engine.unload()
 
     if job_id:
-        job_store.update_step(job_id, step_offset + 4)
+        job_store.update_step(job_id, 4)
         if job_store.is_cancelled(job_id):
             return None
 
@@ -351,8 +349,14 @@ async def _handle_narration(text, image_caption, engine, engine_name, duration, 
     final_path = AUDIO_DIR / final_filename
     await mix_narration_and_music(voice_path, music_path, final_path)
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, 5)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, step_offset + 5)
+        job_store.update_step(job_id, 6 if generate_image else 5)
 
     result = {
         "mode": "write",
@@ -364,7 +368,6 @@ async def _handle_narration(text, image_caption, engine, engine_name, duration, 
         "engine": engine_name,
         "audio_url": f"/audio/{final_filename}",
     }
-    if image_task:
-        img_filename = await image_task
+    if img_filename:
         result["image_url"] = f"/images/{img_filename}"
     return result

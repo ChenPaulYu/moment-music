@@ -9,16 +9,18 @@ import AnimateIn from "@/components/animation/AnimateIn";
 import { useDeviceMotion } from "@/hooks/useDeviceMotion";
 import { generateMove, getApiKeyStatus, getJobStatus, cancelJob } from "@/lib/api";
 import { saveActiveJob, getActiveJob, clearActiveJob } from "@/lib/jobs";
-import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
+import { getEngineForOutput, getAlbumArtEnabled, getCaptureDuration } from "@/lib/engine";
 import { getAllStylePromptsForMode } from "@/lib/stylePrompts";
 import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
-import { cn } from "@/lib/utils";
+import { cn, formatTime } from "@/lib/utils";
 import type { OutputType } from "@/lib/types";
 
 export default function MoveMode() {
   const navigate = useNavigate();
   const [outputType, setOutputType] = useState<OutputType>("instrumental");
-  const { isCapturing, readings, inputSource, start, stop, toJSON } = useDeviceMotion();
+  const maxDuration = getCaptureDuration();
+  const { isCapturing, elapsed, readings, inputSource, start, stop, toJSON } = useDeviceMotion(maxDuration);
+  const progress = Math.min(elapsed / maxDuration, 1);
 
   const [generating, setGenerating] = useState(false);
   const [currentStep, setCurrentStep] = useState(-1);
@@ -30,20 +32,27 @@ export default function MoveMode() {
   const [showKeyDialog, setShowKeyDialog] = useState(false);
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
 
+  const pollingRef = useRef(false);
   const startPolling = useCallback((jid: string) => {
     pollRef.current = setInterval(async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
       try {
         const job = await getJobStatus(jid);
-        setSteps(job.steps);
-        setCurrentStep(job.step);
-        setQueuePosition(job.queue_position);
+        setSteps((prev) =>
+          prev.length === job.steps.length && prev.every((s, i) => s === job.steps[i])
+            ? prev
+            : job.steps
+        );
+        setCurrentStep((prev) => (prev === job.step ? prev : job.step));
+        setQueuePosition((prev) => (prev === job.queue_position ? prev : job.queue_position));
 
         if (job.status === "completed") {
           clearInterval(pollRef.current);
           clearActiveJob();
           setCurrentStep(job.steps.length);
           await new Promise((r) => setTimeout(r, 500));
-          navigate("/player", { state: job.result });
+          navigate(`/player/${jid}`, { state: job.result });
         } else if (job.status === "failed") {
           clearInterval(pollRef.current);
           clearActiveJob();
@@ -62,6 +71,8 @@ export default function MoveMode() {
         setGenerating(false);
         setJobId(null);
         setError("Generation session lost. Please try again.");
+      } finally {
+        pollingRef.current = false;
       }
     }, 2000);
   }, [navigate]);
@@ -166,26 +177,40 @@ export default function MoveMode() {
         </p>
       </AnimateIn>
 
-      {/* Concentric circles + icon */}
-      <AnimateIn delay={200} className="relative flex items-center justify-center mb-12">
-        {/* Outer rings */}
-        <div className={cn(
-          "absolute w-72 h-72 md:w-80 md:h-80 rounded-full border transition-colors duration-500",
-          isCapturing ? "border-primary/20" : "border-white/5"
-        )} />
-        <div className={cn(
-          "absolute w-56 h-56 md:w-64 md:h-64 rounded-full border transition-colors duration-500",
-          isCapturing ? "border-primary/30" : "border-white/10"
-        )} />
+      {/* Progress ring + capture button */}
+      <AnimateIn delay={200} className="relative flex items-center justify-center mb-8 w-64 h-64 md:w-80 md:h-80">
+        {/* SVG progress ring */}
+        <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 320 320">
+          <circle
+            cx="160"
+            cy="160"
+            r="150"
+            fill="none"
+            stroke="rgba(255,255,255,0.05)"
+            strokeWidth="2"
+          />
+          <circle
+            cx="160"
+            cy="160"
+            r="150"
+            fill="none"
+            stroke={isCapturing ? "#6347ff" : "#6347ff"}
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 150}`}
+            strokeDashoffset={`${2 * Math.PI * 150 * (1 - progress)}`}
+            className="transition-all duration-300"
+          />
+        </svg>
 
         {/* Inner circle button */}
         <button
           onClick={handleCaptureToggle}
           disabled={generating}
           className={cn(
-            "relative w-44 h-44 md:w-52 md:h-52 rounded-full flex flex-col items-center justify-center gap-3",
-            "bg-background-dark/60 border border-white/10 cursor-pointer",
-            "hover:border-primary/40 transition-all duration-300",
+            "relative w-48 h-48 md:w-56 md:h-56 rounded-full flex flex-col items-center justify-center gap-3",
+            "bg-background-dark/80 border border-white/10 cursor-pointer",
+            "hover:border-primary/50 transition-all duration-300",
             isCapturing && "shadow-[0_0_60px_rgba(99,71,255,0.3)] border-primary/30",
             generating && "opacity-50 cursor-not-allowed"
           )}
@@ -202,6 +227,14 @@ export default function MoveMode() {
             {isCapturing ? "Stop Capture" : "Start Capture"}
           </span>
         </button>
+      </AnimateIn>
+
+      {/* Timer */}
+      <AnimateIn delay={200} className={cn(
+        "glass-panel rounded-lg px-6 py-2 text-sm font-mono mb-12",
+        isCapturing ? "text-primary/80" : "text-primary/80"
+      )}>
+        {formatTime(Math.floor(elapsed))} / {formatTime(maxDuration)}
       </AnimateIn>
 
       {/* Readings indicator */}
@@ -234,11 +267,12 @@ export default function MoveMode() {
         />
         {generating && (
           <>
-            {queuePosition > 0 ? (
+            {queuePosition > 0 && (
               <p className="text-white/50 text-sm mt-4 text-center">
                 Waiting in queue (position #{queuePosition})...
               </p>
-            ) : (
+            )}
+            {queuePosition === 0 && steps.length > 0 && (
               <GenerationSteps steps={steps} currentStep={currentStep} />
             )}
             <div className="flex justify-center">

@@ -31,14 +31,17 @@ def _uid() -> str:
     return uuid4().hex[:12]
 
 
-def _get_steps(output_type: str) -> list[str]:
+def _get_steps(output_type: str, generate_image: bool = False) -> list[str]:
     steps = ["Analyzing audio"]
     if output_type == "narration":
-        steps += ["Interpreting mood", "Writing narration", "Generating voice", "Generating background music", "Mixing audio", "Finalizing"]
+        steps += ["Interpreting mood", "Writing narration", "Generating voice", "Generating background music", "Mixing audio"]
     elif output_type == "song":
-        steps += ["Interpreting mood", "Composing lyrics & tags", "Generating song", "Finalizing"]
+        steps += ["Interpreting mood", "Composing lyrics & tags", "Generating song"]
     else:
-        steps += ["Interpreting mood", "Generating audio", "Finalizing"]
+        steps += ["Interpreting mood", "Generating audio"]
+    if generate_image:
+        steps.append("Generating album art")
+    steps.append("Finalizing")
     return steps
 
 
@@ -107,7 +110,7 @@ async def generate_listen(
             content={"error": "Server is busy. Please try again in a moment."},
         )
 
-    steps = _get_steps(output_type)
+    steps = _get_steps(output_type, generate_image=want_image)
     job_id = job_store.create(mode="listen", output_type=output_type, steps=steps)
 
     async def _run():
@@ -118,7 +121,7 @@ async def generate_listen(
 
                 # Analyze audio (step 0)
                 job_store.update_step(job_id, 0)
-                audio_description = await analyze_audio(audio_bytes, audio_mime)
+                audio_description = await analyze_audio(audio_bytes, audio_mime, style_prompts=parsed_styles)
 
                 if job_store.is_cancelled(job_id):
                     return
@@ -161,30 +164,32 @@ async def _handle_instrumental(audio_description, engine, engine_name, duration,
     filename = f"{_uid()}.mp3"
     output_path = AUDIO_DIR / filename
 
+    image_task = None
     if generate_image:
-        _, img_filename = await asyncio.gather(
-            engine.generate(
-                prompt=interpretation.suggested_prompt,
-                duration=duration,
-                output_path=output_path,
-            ),
+        image_task = asyncio.create_task(
             generate_album_art(
                 interpretation.summary,
                 interpretation.mood_keywords,
                 audio_description[:100],
-            ),
+                style_prompts=style_prompts,
+            )
         )
-    else:
-        await engine.generate(
-            prompt=interpretation.suggested_prompt,
-            duration=duration,
-            output_path=output_path,
-        )
-        img_filename = None
+
+    await engine.generate(
+        prompt=interpretation.suggested_prompt,
+        duration=duration,
+        output_path=output_path,
+    )
     engine.unload()
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, step_offset + 2)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, step_offset + 2)
+        job_store.update_step(job_id, step_offset + (3 if generate_image else 2))
 
     result = {
         "mode": "listen",
@@ -225,34 +230,34 @@ async def _handle_song(audio_description, engine, engine_name, duration, generat
             engine.unload()
             return None
 
+    image_task = None
     if generate_image:
-        _, img_filename = await asyncio.gather(
-            engine.generate(
-                prompt=interpretation.music_tags,
-                duration=song_duration,
-                output_path=output_path,
-                lyrics=interpretation.lyrics,
-                tags=interpretation.music_tags,
-            ),
+        image_task = asyncio.create_task(
             generate_album_art(
                 interpretation.summary,
                 interpretation.mood_keywords,
                 audio_description[:100],
-            ),
+                style_prompts=style_prompts,
+            )
         )
-    else:
-        await engine.generate(
-            prompt=interpretation.music_tags,
-            duration=song_duration,
-            output_path=output_path,
-            lyrics=interpretation.lyrics,
-            tags=interpretation.music_tags,
-        )
-        img_filename = None
+
+    await engine.generate(
+        prompt=interpretation.music_tags,
+        duration=song_duration,
+        output_path=output_path,
+        lyrics=interpretation.lyrics,
+        tags=interpretation.music_tags,
+    )
     engine.unload()
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, step_offset + 3)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, step_offset + 3)
+        job_store.update_step(job_id, step_offset + (4 if generate_image else 3))
 
     result = {
         "mode": "listen",
@@ -297,6 +302,7 @@ async def _handle_narration(audio_description, engine, engine_name, duration, ge
                 interpretation.summary,
                 interpretation.mood_keywords,
                 audio_description[:100],
+                style_prompts=style_prompts,
             )
         )
 
@@ -337,8 +343,14 @@ async def _handle_narration(audio_description, engine, engine_name, duration, ge
     final_path = AUDIO_DIR / final_filename
     await mix_narration_and_music(voice_path, music_path, final_path)
 
+    img_filename = None
+    if image_task:
+        if job_id:
+            job_store.update_step(job_id, step_offset + 5)
+        img_filename = await image_task
+
     if job_id:
-        job_store.update_step(job_id, step_offset + 5)
+        job_store.update_step(job_id, step_offset + (6 if generate_image else 5))
 
     result = {
         "mode": "listen",
@@ -350,7 +362,6 @@ async def _handle_narration(audio_description, engine, engine_name, duration, ge
         "engine": engine_name,
         "audio_url": f"/audio/{final_filename}",
     }
-    if image_task:
-        img_filename = await image_task
+    if img_filename:
         result["image_url"] = f"/images/{img_filename}"
     return result

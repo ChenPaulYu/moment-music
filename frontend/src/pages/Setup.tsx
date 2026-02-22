@@ -8,6 +8,8 @@ import {
   getDisplayLabel,
   getAlbumArtEnabled,
   setAlbumArtEnabled,
+  getCaptureDuration,
+  setCaptureDuration,
 } from "@/lib/engine";
 import { getApiKeyStatus, saveApiKeys } from "@/lib/api";
 import type { OutputType } from "@/lib/types";
@@ -133,6 +135,7 @@ export default function Setup() {
     getInitialSelections,
   );
   const [albumArt, setAlbumArt] = useState(getAlbumArtEnabled);
+  const [captureDur, setCaptureDur] = useState(getCaptureDuration);
 
   // API key management state
   const [keyStatus, setKeyStatus] = useState<{
@@ -258,8 +261,50 @@ export default function Setup() {
           </div>
         </AnimateIn>
 
-        {/* API Keys */}
+        {/* Capture Duration */}
         <AnimateIn delay={ENGINES.length * 80 + 80}>
+          <div className="glass-panel rounded-xl p-5">
+            <div className="flex items-start gap-4">
+              <div className="size-10 rounded-lg bg-[#131022] border border-[#292348] flex items-center justify-center shrink-0">
+                <MaterialIcon
+                  icon="timer"
+                  size={20}
+                  className="text-green-400"
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-white text-sm font-semibold mb-0.5">
+                  Capture Duration
+                </h3>
+                <p className="text-[#9b92c9] text-xs mb-3">
+                  Max recording time for Listen and Move modes
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {[5, 10, 15, 20, 30].map((sec) => (
+                    <button
+                      key={sec}
+                      onClick={() => {
+                        setCaptureDur(sec);
+                        setCaptureDuration(sec);
+                      }}
+                      className={cn(
+                        "px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer border",
+                        captureDur === sec
+                          ? "bg-primary/20 text-white border-primary/40"
+                          : "bg-[#131022] text-[#9b92c9] border-[#292348] hover:border-[#3d3566]"
+                      )}
+                    >
+                      {sec}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </AnimateIn>
+
+        {/* API Keys */}
+        <AnimateIn delay={ENGINES.length * 80 + 160}>
           <div className="glass-panel rounded-xl p-5">
             <div className="flex items-start gap-4">
               <div className="size-10 rounded-lg bg-[#131022] border border-[#292348] flex items-center justify-center shrink-0">

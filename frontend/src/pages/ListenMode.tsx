@@ -10,7 +10,7 @@ import AnimateIn from "@/components/animation/AnimateIn";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
 import { generateListen, getApiKeyStatus, getJobStatus, cancelJob } from "@/lib/api";
 import { saveActiveJob, getActiveJob, clearActiveJob } from "@/lib/jobs";
-import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
+import { getEngineForOutput, getAlbumArtEnabled, getCaptureDuration } from "@/lib/engine";
 import { getAllStylePromptsForMode } from "@/lib/stylePrompts";
 import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
 import { cn, formatTime } from "@/lib/utils";
@@ -19,7 +19,7 @@ import type { OutputType } from "@/lib/types";
 export default function ListenMode() {
   const navigate = useNavigate();
   const [outputType, setOutputType] = useState<OutputType>("instrumental");
-  const maxDuration = 10;
+  const maxDuration = getCaptureDuration();
   const { isRecording, elapsed, audioBlob, start, stop } = useAudioCapture(maxDuration);
   const progress = Math.min(elapsed / maxDuration, 1);
 
@@ -40,20 +40,27 @@ export default function ListenMode() {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  const pollingRef = useRef(false);
   const startPolling = useCallback((jid: string) => {
     pollRef.current = setInterval(async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
       try {
         const job = await getJobStatus(jid);
-        setSteps(job.steps);
-        setCurrentStep(job.step);
-        setQueuePosition(job.queue_position);
+        setSteps((prev) =>
+          prev.length === job.steps.length && prev.every((s, i) => s === job.steps[i])
+            ? prev
+            : job.steps
+        );
+        setCurrentStep((prev) => (prev === job.step ? prev : job.step));
+        setQueuePosition((prev) => (prev === job.queue_position ? prev : job.queue_position));
 
         if (job.status === "completed") {
           clearInterval(pollRef.current);
           clearActiveJob();
           setCurrentStep(job.steps.length);
           await new Promise((r) => setTimeout(r, 500));
-          navigate("/player", { state: job.result });
+          navigate(`/player/${jid}`, { state: job.result });
         } else if (job.status === "failed") {
           clearInterval(pollRef.current);
           clearActiveJob();
@@ -72,6 +79,8 @@ export default function ListenMode() {
         setGenerating(false);
         setJobId(null);
         setError("Generation session lost. Please try again.");
+      } finally {
+        pollingRef.current = false;
       }
     }, 2000);
   }, [navigate]);
@@ -332,11 +341,12 @@ export default function ListenMode() {
         />
         {generating && (
           <>
-            {queuePosition > 0 ? (
+            {queuePosition > 0 && (
               <p className="text-white/50 text-sm mt-4 text-center">
                 Waiting in queue (position #{queuePosition})...
               </p>
-            ) : (
+            )}
+            {queuePosition === 0 && steps.length > 0 && (
               <GenerationSteps steps={steps} currentStep={currentStep} />
             )}
             <div className="flex justify-center">

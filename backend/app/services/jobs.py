@@ -1,8 +1,14 @@
 import asyncio
+import logging
 import time
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
+
+# Auto-cancel jobs that haven't been polled for this many seconds
+HEARTBEAT_TIMEOUT = 30
 
 
 @dataclass
@@ -16,6 +22,7 @@ class Job:
     result: dict | None = None
     error: str | None = None
     created_at: float = field(default_factory=time.time)
+    last_poll: float = field(default_factory=time.time)
     _task: asyncio.Task | None = field(default=None, repr=False)
 
 
@@ -33,17 +40,26 @@ class JobStore:
     def create(self, mode: str, output_type: str, steps: list[str]) -> str:
         self.cleanup_old()
         job_id = uuid4().hex[:16]
+        now = time.time()
         self._jobs[job_id] = Job(
             id=job_id,
             status="queued",
             mode=mode,
             output_type=output_type,
             steps=steps,
+            created_at=now,
+            last_poll=now,
         )
         return job_id
 
     def get(self, job_id: str) -> Job | None:
         return self._jobs.get(job_id)
+
+    def touch(self, job_id: str) -> None:
+        """Update the heartbeat timestamp (called on every status poll)."""
+        job = self._jobs.get(job_id)
+        if job:
+            job.last_poll = time.time()
 
     def update_step(self, job_id: str, step: int) -> None:
         job = self._jobs.get(job_id)
@@ -71,8 +87,13 @@ class JobStore:
         job = self._jobs.get(job_id)
         if not job or job.status in ("completed", "failed", "cancelled"):
             return False
+        was_queued = job.status == "queued"
         job.status = "cancelled"
-        if job._task and not job._task.done():
+        # Only cancel the asyncio task for queued jobs (waiting on semaphore).
+        # Running jobs have a GPU thread that can't be interrupted — they check
+        # is_cancelled() between steps and bail out naturally, keeping the
+        # semaphore held until the GPU thread finishes.
+        if was_queued and job._task and not job._task.done():
             job._task.cancel()
         return True
 
@@ -97,6 +118,14 @@ class JobStore:
             if other.status in ("queued", "running") and other.created_at <= job.created_at:
                 position += 1
         return position
+
+    def cancel_stale(self, timeout: float = HEARTBEAT_TIMEOUT) -> None:
+        """Cancel jobs that haven't been polled within the timeout period."""
+        now = time.time()
+        for job in list(self._jobs.values()):
+            if job.status in ("queued", "running") and (now - job.last_poll) > timeout:
+                logger.info("Auto-cancelling stale job %s (no poll for %.0fs)", job.id, now - job.last_poll)
+                self.cancel(job.id)
 
     def cleanup_old(self, max_age: float = 3600) -> None:
         now = time.time()

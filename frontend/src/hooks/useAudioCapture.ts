@@ -8,6 +8,13 @@ interface AudioCaptureState {
   stop: () => void;
 }
 
+function pickMimeType(): string {
+  for (const t of ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"]) {
+    if (MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return "";
+}
+
 export function useAudioCapture(maxDuration = 10): AudioCaptureState {
   const [isRecording, setIsRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -15,6 +22,7 @@ export function useAudioCapture(maxDuration = 10): AudioCaptureState {
 
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const chunks = useRef<Blob[]>([]);
+  const mimeRef = useRef("");
   const timerRef = useRef<ReturnType<typeof setInterval>>();
   const startTimeRef = useRef(0);
 
@@ -28,10 +36,13 @@ export function useAudioCapture(maxDuration = 10): AudioCaptureState {
 
   const start = useCallback(async () => {
     setAudioBlob(null);
+    setElapsed(0);
     chunks.current = [];
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const recorder = new MediaRecorder(stream);
+    const mime = pickMimeType();
+    mimeRef.current = mime;
+    const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     mediaRecorder.current = recorder;
 
     recorder.ondataavailable = (e) => {
@@ -39,12 +50,13 @@ export function useAudioCapture(maxDuration = 10): AudioCaptureState {
     };
 
     recorder.onstop = () => {
-      const blob = new Blob(chunks.current, { type: "audio/webm" });
+      const type = mimeRef.current || recorder.mimeType || "audio/webm";
+      const blob = new Blob(chunks.current, { type });
       setAudioBlob(blob);
       stream.getTracks().forEach((t) => t.stop());
     };
 
-    recorder.start();
+    recorder.start(1000); // collect data every 1s for reliable capture
     setIsRecording(true);
     startTimeRef.current = Date.now();
 

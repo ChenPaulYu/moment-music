@@ -22,7 +22,7 @@ def estimate_song_duration(
 ) -> float:
     """Estimate song duration from lyrics content, respecting the user's target.
 
-    Assumes ~2.5 sung words/second (typical pop/folk singing pace).
+    Assumes ~1.5 sung words/second (typical singing pace, slower than speech).
     Adds 5s padding for intro/outro.
     Caps at 2x the target duration to prevent runaway lengths.
     """
@@ -30,7 +30,7 @@ def estimate_song_duration(
     effective_max = min(max_duration, target_duration * 2)
     cleaned = _SECTION_RE.sub("", lyrics)
     word_count = len(cleaned.split())
-    estimated = (word_count / 2.5) + 5
+    estimated = (word_count / 1.5) + 5
     return max(min_duration, min(estimated, effective_max))
 
 

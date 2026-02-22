@@ -17,14 +17,18 @@ def _get_client() -> AsyncOpenAI:
 
 
 async def generate_album_art(
-    summary: str, mood_keywords: list[str], weather_desc: str
+    summary: str, mood_keywords: list[str], weather_desc: str,
+    style_prompts: dict | None = None,
 ) -> str:
     """Generate album art via OpenAI gpt-image-1. Returns the filename."""
     mood_str = ", ".join(mood_keywords)
+    art_style = ""
+    if style_prompts and style_prompts.get("album_art_style"):
+        art_style = " " + style_prompts["album_art_style"] + "."
     prompt = (
         f"Abstract album cover art. {summary}. "
         f"Mood: {mood_str}. Weather: {weather_desc}. "
-        f"Atmospheric, cinematic, no text, no letters."
+        f"Atmospheric, cinematic, no text, no letters.{art_style}"
     )
 
     response = await _get_client().images.generate(

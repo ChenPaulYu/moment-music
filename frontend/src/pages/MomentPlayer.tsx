@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import AnimatedBackground from "@/components/layout/AnimatedBackground";
 import Header from "@/components/layout/Header";
 import PageTransition from "@/components/animation/PageTransition";
@@ -26,6 +26,7 @@ function parseWeatherTitle(summary: string): { description: string; city: string
 }
 
 export default function MomentPlayer() {
+  const { jobId: _jobId } = useParams<{ jobId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const rawState = location.state as (BeGenerateResponse & { fromLibrary?: boolean }) | null;
@@ -70,8 +71,6 @@ export default function MomentPlayer() {
     seek(ratio * duration);
   };
 
-  const handleSkipBack = () => seek(Math.max(0, currentTime - 10));
-  const handleSkipForward = () => seek(Math.min(duration, currentTime + 10));
 
   const modeButtons = [
     { icon: "directions_run", label: "Move", route: "/move" },
@@ -88,7 +87,7 @@ export default function MomentPlayer() {
       {/* Back link */}
       <div className="relative z-10 px-4 sm:px-8 pt-20 sm:pt-24">
         <Link
-          to="/library"
+          to={fromLibrary ? "/library" : "/"}
           className="flex items-center gap-2 text-white/40 hover:text-white transition-colors group"
         >
           <MaterialIcon
@@ -97,7 +96,7 @@ export default function MomentPlayer() {
             className="group-hover:-translate-x-1 transition-transform"
           />
           <span className="text-xs font-medium tracking-wide uppercase">
-            Back to Library
+            {fromLibrary ? "Back to Library" : "Back to Home"}
           </span>
         </Link>
       </div>
@@ -187,16 +186,7 @@ export default function MomentPlayer() {
             </div>
 
             {/* Controls */}
-            <div className="flex items-center justify-center gap-8 sm:gap-12">
-              <button className="text-white/50 hover:text-white transition-colors cursor-pointer">
-                <MaterialIcon icon="shuffle" size={28} />
-              </button>
-              <button
-                onClick={handleSkipBack}
-                className="text-white/70 hover:text-white transition-colors cursor-pointer"
-              >
-                <MaterialIcon icon="skip_previous" size={36} />
-              </button>
+            <div className="flex items-center justify-center">
               <button
                 onClick={handlePlayPause}
                 className="w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center rounded-full bg-primary hover:bg-primary/90 text-white transition-all transform hover:scale-105 active:scale-95 shadow-xl shadow-primary/30 cursor-pointer"
@@ -206,15 +196,6 @@ export default function MomentPlayer() {
                   filled
                   size={40}
                 />
-              </button>
-              <button
-                onClick={handleSkipForward}
-                className="text-white/70 hover:text-white transition-colors cursor-pointer"
-              >
-                <MaterialIcon icon="skip_next" size={36} />
-              </button>
-              <button className="text-white/50 hover:text-white transition-colors cursor-pointer">
-                <MaterialIcon icon="repeat" size={28} />
               </button>
             </div>
           </div>

@@ -32,7 +32,7 @@ export default function Library() {
       lyrics: s.lyrics,
       narration_text: s.narration_text,
     };
-    navigate("/player", { state: { ...playerState, fromLibrary: true } });
+    navigate(`/player/${s.id}`, { state: { ...playerState, fromLibrary: true } });
   };
 
   return (

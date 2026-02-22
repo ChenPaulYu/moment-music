@@ -47,20 +47,27 @@ export default function WriteMode() {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const pollingRef = useRef(false);
   const startPolling = useCallback((jid: string) => {
     pollRef.current = setInterval(async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
       try {
         const job = await getJobStatus(jid);
-        setSteps(job.steps);
-        setCurrentStep(job.step);
-        setQueuePosition(job.queue_position);
+        setSteps((prev) =>
+          prev.length === job.steps.length && prev.every((s, i) => s === job.steps[i])
+            ? prev
+            : job.steps
+        );
+        setCurrentStep((prev) => (prev === job.step ? prev : job.step));
+        setQueuePosition((prev) => (prev === job.queue_position ? prev : job.queue_position));
 
         if (job.status === "completed") {
           clearInterval(pollRef.current);
           clearActiveJob();
           setCurrentStep(job.steps.length);
           await new Promise((r) => setTimeout(r, 500));
-          navigate("/player", { state: job.result });
+          navigate(`/player/${jid}`, { state: job.result });
         } else if (job.status === "failed") {
           clearInterval(pollRef.current);
           clearActiveJob();
@@ -79,6 +86,8 @@ export default function WriteMode() {
         setGenerating(false);
         setJobId(null);
         setError("Generation session lost. Please try again.");
+      } finally {
+        pollingRef.current = false;
       }
     }, 2000);
   }, [navigate]);
@@ -240,11 +249,12 @@ export default function WriteMode() {
         />
         {generating && (
           <>
-            {queuePosition > 0 ? (
+            {queuePosition > 0 && (
               <p className="text-white/50 text-sm mt-4 text-center">
                 Waiting in queue (position #{queuePosition})...
               </p>
-            ) : (
+            )}
+            {queuePosition === 0 && steps.length > 0 && (
               <GenerationSteps steps={steps} currentStep={currentStep} />
             )}
             <div className="flex justify-center">
