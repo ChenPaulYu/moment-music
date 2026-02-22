@@ -1,30 +1,110 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/layout/PageLayout";
 import GlassInput from "@/components/ui/GlassInput";
 import OutputTypeSelector from "@/components/ui/OutputTypeSelector";
 import GenerateButton from "@/components/ui/GenerateButton";
+import GenerationSteps from "@/components/ui/GenerationSteps";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import AnimateIn from "@/components/animation/AnimateIn";
+import { generateWrite, getApiKeyStatus } from "@/lib/api";
+import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
+import { getAllStylePrompts } from "@/lib/stylePrompts";
+import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
 import type { OutputType } from "@/lib/types";
 
 export default function WriteMode() {
+  const navigate = useNavigate();
   const [text, setText] = useState("");
   const [outputType, setOutputType] = useState<OutputType>("instrumental");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [generating, setGenerating] = useState(false);
+  const [currentStep, setCurrentStep] = useState(-1);
+  const [error, setError] = useState<string | null>(null);
+  const [showKeyDialog, setShowKeyDialog] = useState(false);
+  const [missingKeys, setMissingKeys] = useState<string[]>([]);
+  const stepTimer = useRef<ReturnType<typeof setInterval>>();
+
+  const STEPS = imageFile
+    ? ["Reading your moment", "Captioning image", "Composing audio prompt", "Generating audio", "Rendering final mix"]
+    : ["Reading your moment", "Composing audio prompt", "Generating audio", "Rendering final mix"];
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setImagePreview(url);
+      setImageFile(file);
     }
   };
 
   const removeImage = () => {
     setImagePreview(null);
+    setImageFile(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
+
+  // Cleanup step timer on unmount
+  useEffect(() => () => clearInterval(stepTimer.current), []);
+
+  const handleGenerate = async () => {
+    if (generating) return;
+
+    try {
+      const status = await getApiKeyStatus();
+      const missing: string[] = [];
+      if (!status.openai) missing.push("openai");
+      const engine = getEngineForOutput(outputType);
+      if (engine.includes("stable_audio_api") && !status.stability)
+        missing.push("stability");
+      if (missing.length > 0) {
+        setMissingKeys(missing);
+        setShowKeyDialog(true);
+        return;
+      }
+    } catch {
+      // continue
+    }
+
+    setGenerating(true);
+    setCurrentStep(0);
+    setError(null);
+
+    const maxStep = STEPS.length - 2; // don't reach last step until done
+    const startTime = Date.now();
+    stepTimer.current = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const p = maxStep * (1 - Math.exp(-elapsed / 60));
+      setCurrentStep(Math.min(Math.floor(p), maxStep));
+    }, 1000);
+
+    try {
+      const response = await generateWrite({
+        text,
+        image: imageFile ?? undefined,
+        outputType,
+        engine: getEngineForOutput(outputType),
+        generate_image: getAlbumArtEnabled(),
+        style_prompts: getAllStylePrompts(),
+      });
+      clearInterval(stepTimer.current);
+      setCurrentStep(STEPS.length);
+      await new Promise((r) => setTimeout(r, 500));
+      navigate("/player", { state: response });
+    } catch (err) {
+      clearInterval(stepTimer.current);
+      setCurrentStep(-1);
+      setError(
+        err instanceof Error ? err.message : "Generation failed. Try again."
+      );
+      setGenerating(false);
+    }
+  };
+
+  const canGenerate = text.length > 0 || !!imageFile;
 
   return (
     <PageLayout>
@@ -103,9 +183,32 @@ export default function WriteMode() {
       <AnimateIn delay={300}>
         <GenerateButton
           className="mt-4"
-          disabled={text.length === 0 && !imagePreview}
+          onClick={handleGenerate}
+          disabled={!canGenerate || generating}
+          loading={generating}
+          label={generating ? "Generating..." : "Generate Soundscape"}
+          icon={generating ? "progress_activity" : "auto_awesome"}
         />
+        {generating && (
+          <GenerationSteps steps={STEPS} currentStep={currentStep} />
+        )}
+        {error && (
+          <p className="mt-4 text-red-400 text-sm text-center max-w-md">
+            {error}
+          </p>
+        )}
       </AnimateIn>
+
+      {showKeyDialog && (
+        <ApiKeyDialog
+          missingKeys={missingKeys}
+          onClose={() => setShowKeyDialog(false)}
+          onSaved={() => {
+            setShowKeyDialog(false);
+            handleGenerate();
+          }}
+        />
+      )}
     </PageLayout>
   );
 }

@@ -26,12 +26,23 @@ class StableAudioOpenEngine(AudioEngine):
         except ImportError:
             return False
 
+    def unload(self):
+        if self._pipe is not None:
+            import gc
+            import torch
+
+            del self._pipe
+            self._pipe = None
+            gc.collect()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+
     def _load_pipeline(self):
         if self._pipe is not None:
             return self._pipe
 
         import torch
-        from diffusers import StableAudioPipeline
+        from diffusers import StableAudioPipeline, DPMSolverMultistepScheduler
 
         device = get_device()
         dtype = torch.float16 if device == "cuda" else torch.float32
@@ -45,6 +56,15 @@ class StableAudioOpenEngine(AudioEngine):
             token=os.getenv("HF_TOKEN"),
             torch_dtype=dtype,
         )
+
+        # Replace default CosineDPMSolverMultistepScheduler (SDE) with
+        # standard DPMSolverMultistepScheduler to avoid torchsde recursion
+        # crash on MPS (Apple Silicon).
+        if device == "mps":
+            self._pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+                self._pipe.scheduler.config
+            )
+
         self._pipe = self._pipe.to(device)
         return self._pipe
 
@@ -56,7 +76,7 @@ class StableAudioOpenEngine(AudioEngine):
         device = get_device()
         duration = min(duration, 47.0)  # model max is 47s
         # Fewer steps on MPS/CPU for practical speed
-        default_steps = 200 if device == "cuda" else 50
+        default_steps = 200 if device == "cuda" else 20
         steps = kwargs.get("steps", default_steps)
         negative_prompt = kwargs.get("negative_prompt", "low quality")
 
@@ -68,7 +88,7 @@ class StableAudioOpenEngine(AudioEngine):
                 audio_end_in_s=duration,
                 num_inference_steps=steps,
             )
-            audio = result.audios[0].T  # (channels, samples) → (samples, channels)
+            audio = result.audios[0].T.cpu().numpy()  # (channels, samples) → (samples, channels)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             sf.write(str(output_path), audio, samplerate=44100)
 

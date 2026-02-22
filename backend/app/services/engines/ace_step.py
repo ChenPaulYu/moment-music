@@ -55,12 +55,19 @@ class AceStepEngine(AudioEngine):
     async def generate(
         self, prompt: str, duration: float, output_path: Path, **kwargs
     ) -> Path:
+        import gc
         import soundfile as sf
+        import torch
 
         lyrics = kwargs.get("lyrics", "")
         tags = kwargs.get("tags", prompt)
 
         def _run():
+            # Clear stale MPS allocations before loading
+            if torch.backends.mps.is_available():
+                gc.collect()
+                torch.mps.empty_cache()
+
             handler = self._load_handler()
             result = handler.generate_music(
                 captions=tags,
@@ -71,13 +78,19 @@ class AceStepEngine(AudioEngine):
                 raise RuntimeError(f"ACE-STEP generation failed: {result.get('error')}")
 
             audio_data = result["audios"][0]
-            audio_tensor = audio_data["tensor"]
+            audio_tensor = audio_data["tensor"].cpu()
             sr = audio_data["sample_rate"]
 
             # tensor shape: (channels, samples) → (samples, channels)
             audio_np = audio_tensor.numpy().T
             output_path.parent.mkdir(parents=True, exist_ok=True)
             sf.write(str(output_path), audio_np, samplerate=sr)
+
+            # Free intermediate tensors from this generation
+            del result
+            gc.collect()
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
 
         await asyncio.to_thread(_run)
         return output_path

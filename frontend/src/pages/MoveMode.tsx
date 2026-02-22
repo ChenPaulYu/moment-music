@@ -1,22 +1,98 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/layout/PageLayout";
 import OutputTypeSelector from "@/components/ui/OutputTypeSelector";
 import GenerateButton from "@/components/ui/GenerateButton";
+import GenerationSteps from "@/components/ui/GenerationSteps";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import AnimateIn from "@/components/animation/AnimateIn";
 import { useDeviceMotion } from "@/hooks/useDeviceMotion";
+import { generateMove, getApiKeyStatus } from "@/lib/api";
+import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
+import { getAllStylePrompts } from "@/lib/stylePrompts";
+import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
 import { cn } from "@/lib/utils";
 import type { OutputType } from "@/lib/types";
 
-export default function MoveMode() {
-  const [outputType, setOutputType] = useState<OutputType>("instrumental");
-  const { isCapturing, readings, start, stop } = useDeviceMotion();
+const STEPS = [
+  "Analyzing movement",
+  "Interpreting rhythm",
+  "Generating audio",
+  "Rendering final mix",
+];
 
-  const handleCaptureToggle = () => {
+export default function MoveMode() {
+  const navigate = useNavigate();
+  const [outputType, setOutputType] = useState<OutputType>("instrumental");
+  const { isCapturing, readings, inputSource, start, stop, toJSON } = useDeviceMotion();
+
+  const [generating, setGenerating] = useState(false);
+  const [currentStep, setCurrentStep] = useState(-1);
+  const [error, setError] = useState<string | null>(null);
+  const [showKeyDialog, setShowKeyDialog] = useState(false);
+  const [missingKeys, setMissingKeys] = useState<string[]>([]);
+  const stepTimer = useRef<ReturnType<typeof setInterval>>();
+
+  useEffect(() => () => clearInterval(stepTimer.current), []);
+
+  const handleCaptureToggle = async () => {
     if (isCapturing) {
       stop();
     } else {
-      start();
+      await start();
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (generating || readings.length === 0) return;
+
+    try {
+      const status = await getApiKeyStatus();
+      const missing: string[] = [];
+      if (!status.openai) missing.push("openai");
+      const engine = getEngineForOutput(outputType);
+      if (engine.includes("stable_audio_api") && !status.stability)
+        missing.push("stability");
+      if (missing.length > 0) {
+        setMissingKeys(missing);
+        setShowKeyDialog(true);
+        return;
+      }
+    } catch {
+      // continue
+    }
+
+    setGenerating(true);
+    setCurrentStep(0);
+    setError(null);
+
+    const startTime = Date.now();
+    stepTimer.current = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      // Asymptotic progress mapped to step indices 0-2 (never reaches 3 until done)
+      const p = 2.9 * (1 - Math.exp(-elapsed / 60));
+      setCurrentStep(Math.min(Math.floor(p), 2));
+    }, 1000);
+
+    try {
+      const response = await generateMove({
+        motionData: toJSON(),
+        outputType,
+        engine: getEngineForOutput(outputType),
+        generate_image: getAlbumArtEnabled(),
+        style_prompts: getAllStylePrompts(),
+      });
+      clearInterval(stepTimer.current);
+      setCurrentStep(STEPS.length);
+      await new Promise((r) => setTimeout(r, 500));
+      navigate("/player", { state: response });
+    } catch (err) {
+      clearInterval(stepTimer.current);
+      setCurrentStep(-1);
+      setError(
+        err instanceof Error ? err.message : "Generation failed. Try again."
+      );
+      setGenerating(false);
     }
   };
 
@@ -41,7 +117,9 @@ export default function MoveMode() {
           Motion Capture
         </h1>
         <p className="text-white/50 text-sm sm:text-lg font-light text-center mb-10 sm:mb-16">
-          Move your device to shape the sound.
+          {inputSource === "pointer"
+            ? "Move your cursor to shape the sound."
+            : "Move your device to shape the sound."}
         </p>
       </AnimateIn>
 
@@ -60,15 +138,17 @@ export default function MoveMode() {
         {/* Inner circle button */}
         <button
           onClick={handleCaptureToggle}
+          disabled={generating}
           className={cn(
             "relative w-44 h-44 md:w-52 md:h-52 rounded-full flex flex-col items-center justify-center gap-3",
             "bg-background-dark/60 border border-white/10 cursor-pointer",
             "hover:border-primary/40 transition-all duration-300",
-            isCapturing && "shadow-[0_0_60px_rgba(99,71,255,0.3)] border-primary/30"
+            isCapturing && "shadow-[0_0_60px_rgba(99,71,255,0.3)] border-primary/30",
+            generating && "opacity-50 cursor-not-allowed"
           )}
         >
           <MaterialIcon
-            icon={isCapturing ? "stop" : "screen_rotation"}
+            icon={isCapturing ? "stop" : (inputSource === "pointer" ? "mouse" : "screen_rotation")}
             size={40}
             className={cn(
               "transition-colors",
@@ -82,10 +162,15 @@ export default function MoveMode() {
       </AnimateIn>
 
       {/* Readings indicator */}
-      {readings.length > 0 && !isCapturing && (
-        <div className="flex items-center gap-2 mb-6 text-green-400 text-sm">
-          <MaterialIcon icon="check_circle" size={18} />
-          <span>Captured {readings.length} motion samples</span>
+      {readings.length > 0 && !isCapturing && !generating && (
+        <div className="flex flex-col items-center gap-1.5 mb-6">
+          <div className="flex items-center gap-2 text-green-400 text-sm">
+            <MaterialIcon icon="check_circle" size={18} />
+            <span>Captured {readings.length} motion samples</span>
+          </div>
+          {inputSource === "pointer" && (
+            <span className="text-white/30 text-xs">via pointer movement</span>
+          )}
         </div>
       )}
 
@@ -93,14 +178,38 @@ export default function MoveMode() {
       <AnimateIn delay={300}>
         <OutputTypeSelector value={outputType} onChange={setOutputType} />
         <GenerateButton
-          icon="auto_fix_high"
+          icon={generating ? "progress_activity" : "auto_fix_high"}
           className="mt-8"
-          disabled={readings.length === 0}
+          disabled={readings.length === 0 || generating}
+          onClick={handleGenerate}
+          loading={generating}
+          label={generating ? "Generating..." : "Generate Soundscape"}
         />
-        <p className="text-white/30 text-xs mt-4 tracking-wider text-center">
-          {readings.length === 0 ? "Capture movement to enable generation" : "Ready to generate"}
-        </p>
+        {generating && (
+          <GenerationSteps steps={STEPS} currentStep={currentStep} />
+        )}
+        {error && (
+          <p className="mt-4 text-red-400 text-sm text-center max-w-md">
+            {error}
+          </p>
+        )}
+        {!generating && (
+          <p className="text-white/30 text-xs mt-4 tracking-wider text-center">
+            {readings.length === 0 ? "Capture movement to enable generation" : "Ready to generate"}
+          </p>
+        )}
       </AnimateIn>
+
+      {showKeyDialog && (
+        <ApiKeyDialog
+          missingKeys={missingKeys}
+          onClose={() => setShowKeyDialog(false)}
+          onSaved={() => {
+            setShowKeyDialog(false);
+            handleGenerate();
+          }}
+        />
+      )}
     </PageLayout>
   );
 }

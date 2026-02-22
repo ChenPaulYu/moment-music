@@ -3,7 +3,7 @@ Please reflect on the emotional and atmospheric tone that arises from this combi
 Then, provide:
 1. A short, poetic or natural language summary that captures the mood and feel of the day.
 2. Three evocative mood keywords that summarize this overall feeling.
-3. A narration script written in a calm, reflective, spoken style. It should poetically describe the moment, the atmosphere, and the feelings it evokes. Write it as continuous prose meant to be read aloud. Target approximately {words_target} words so that the narration fills the specified duration when spoken at a calm pace.
+3. A narration script written as poetry or poetic prose. Use vivid imagery, metaphor, and sensory detail to paint the moment in words. It should feel like a poem being spoken aloud — lyrical, rhythmic, with natural pauses and breathing room. Do not describe the weather literally; instead, let it become a landscape for emotion. Write as much as the moment inspires — the background music duration will adapt to match the narration.
 4. A subtle background music prompt for Stable Audio. The music should be ambient, soft, and atmospheric — designed to sit underneath a spoken narration without overpowering it. Include:
 
 Format: Solo/Ambient |

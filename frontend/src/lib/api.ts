@@ -1,4 +1,4 @@
-import type { OutputType, CreationMode } from "./types";
+import type { OutputType, CreationMode, BeGenerateResponse } from "./types";
 
 interface GenerateRequest {
   mode: CreationMode;
@@ -40,6 +40,135 @@ export async function generateSoundscape(
   return res.json();
 }
 
+export async function generateBe(params: {
+  location: string;
+  outputType: OutputType;
+  engine?: string;
+  duration?: number;
+  generate_image?: boolean;
+  style_prompts?: Record<string, string>;
+}): Promise<BeGenerateResponse> {
+  const res = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      location: params.location,
+      output_type: params.outputType,
+      ...(params.engine && { engine: params.engine }),
+      ...(params.duration && { duration: params.duration }),
+      ...(params.generate_image !== undefined && { generate_image: params.generate_image }),
+      ...(params.style_prompts && { style_prompts: params.style_prompts }),
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Generation failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function generateWrite(params: {
+  text: string;
+  image?: File;
+  outputType: OutputType;
+  engine?: string;
+  generate_image?: boolean;
+  style_prompts?: Record<string, string>;
+}): Promise<BeGenerateResponse> {
+  const formData = new FormData();
+  formData.append("text", params.text);
+  formData.append("output_type", params.outputType);
+  if (params.engine) formData.append("engine", params.engine);
+  if (params.generate_image !== undefined)
+    formData.append("generate_image", String(params.generate_image));
+  if (params.style_prompts)
+    formData.append("style_prompts", JSON.stringify(params.style_prompts));
+  if (params.image) {
+    formData.append("image", params.image);
+  }
+  const res = await fetch("/api/write/generate", {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Generation failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function generateListen(params: {
+  audio: Blob;
+  outputType: OutputType;
+  engine?: string;
+  generate_image?: boolean;
+  style_prompts?: Record<string, string>;
+}): Promise<BeGenerateResponse> {
+  const formData = new FormData();
+  formData.append("audio", params.audio, "capture.webm");
+  formData.append("output_type", params.outputType);
+  if (params.engine) formData.append("engine", params.engine);
+  if (params.generate_image !== undefined)
+    formData.append("generate_image", String(params.generate_image));
+  if (params.style_prompts)
+    formData.append("style_prompts", JSON.stringify(params.style_prompts));
+  const res = await fetch("/api/listen/generate", {
+    method: "POST",
+    body: formData,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Generation failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function generateMove(params: {
+  motionData: string;
+  outputType: OutputType;
+  engine?: string;
+  generate_image?: boolean;
+  style_prompts?: Record<string, string>;
+}): Promise<BeGenerateResponse> {
+  const res = await fetch("/api/move/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      motion_data: params.motionData,
+      output_type: params.outputType,
+      ...(params.engine && { engine: params.engine }),
+      ...(params.generate_image !== undefined && { generate_image: params.generate_image }),
+      ...(params.style_prompts && { style_prompts: params.style_prompts }),
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Generation failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export function getAudioUrl(filename: string): string {
   return `/api/audio/${filename}`;
+}
+
+export async function getApiKeyStatus(): Promise<{
+  openai: boolean;
+  stability: boolean;
+}> {
+  const res = await fetch("/api/settings/keys/status");
+  if (!res.ok) throw new Error("Failed to fetch API key status");
+  return res.json();
+}
+
+export async function saveApiKeys(keys: {
+  openai_api_key?: string;
+  stability_api_key?: string;
+}): Promise<void> {
+  const res = await fetch("/api/settings/keys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(keys),
+  });
+  if (!res.ok) throw new Error("Failed to save API keys");
 }

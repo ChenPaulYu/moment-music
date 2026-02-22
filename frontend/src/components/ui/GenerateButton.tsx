@@ -4,6 +4,7 @@ import MaterialIcon from "./MaterialIcon";
 interface GenerateButtonProps {
   onClick?: () => void;
   disabled?: boolean;
+  loading?: boolean;
   icon?: string;
   label?: string;
   className?: string;
@@ -12,6 +13,7 @@ interface GenerateButtonProps {
 export default function GenerateButton({
   onClick,
   disabled = false,
+  loading = false,
   icon = "auto_awesome",
   label = "Generate Soundscape",
   className,
@@ -30,7 +32,7 @@ export default function GenerateButton({
         className
       )}
     >
-      <MaterialIcon icon={icon} size={20} />
+      <MaterialIcon icon={icon} size={20} className={loading ? "animate-spin" : ""} />
       {label}
     </button>
   );

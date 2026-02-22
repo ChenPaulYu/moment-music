@@ -22,6 +22,7 @@ export default function Header() {
 
   const dropdownItems = [
     { label: "Library", to: "/library", icon: "library_music" },
+    { label: "Prompts", to: "/prompts", icon: "edit_note" },
     { label: "Setup", to: "/setup", icon: "settings" },
   ];
 
@@ -122,12 +123,6 @@ export default function Header() {
                 ))}
               </nav>
 
-              <div className="border-t border-white/5 py-1.5">
-                <button className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/40 hover:text-red-400 hover:bg-white/5 transition-colors w-full cursor-pointer">
-                  <MaterialIcon icon="logout" size={18} />
-                  Sign Out
-                </button>
-              </div>
             </div>
           )}
         </div>

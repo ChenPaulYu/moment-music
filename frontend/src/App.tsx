@@ -7,6 +7,7 @@ import MoveMode from "@/pages/MoveMode";
 import BeMode from "@/pages/BeMode";
 import MomentPlayer from "@/pages/MomentPlayer";
 import Setup from "@/pages/Setup";
+import Prompts from "@/pages/Prompts";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/be" element={<BeMode />} />
         <Route path="/player" element={<MomentPlayer />} />
         <Route path="/setup" element={<Setup />} />
+        <Route path="/prompts" element={<Prompts />} />
       </Routes>
     </BrowserRouter>
   );

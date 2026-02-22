@@ -6,30 +6,51 @@ interface MotionReading {
   rotation: { alpha: number; beta: number; gamma: number };
 }
 
+type InputSource = "device" | "pointer" | null;
+
 interface DeviceMotionState {
   isCapturing: boolean;
   readings: MotionReading[];
-  start: () => void;
+  inputSource: InputSource;
+  start: () => Promise<void>;
   stop: () => void;
   toJSON: () => string;
+}
+
+/** Scale factor: convert pixel deltas to acceleration-like values. */
+const PX_TO_ACC = 0.15;
+
+function hasNativeMotion(): boolean {
+  return "DeviceMotionEvent" in window && "ontouchstart" in window;
+}
+
+async function requestIOSPermission(): Promise<boolean> {
+  const DME = DeviceMotionEvent as unknown as {
+    requestPermission?: () => Promise<"granted" | "denied">;
+  };
+  if (typeof DME.requestPermission === "function") {
+    const permission = await DME.requestPermission();
+    return permission === "granted";
+  }
+  return true; // non-iOS, no permission needed
 }
 
 export function useDeviceMotion(): DeviceMotionState {
   const [isCapturing, setIsCapturing] = useState(false);
   const [readings, setReadings] = useState<MotionReading[]>([]);
-  const handlerRef = useRef<((e: DeviceMotionEvent) => void) | null>(null);
+  const [inputSource, setInputSource] = useState<InputSource>(null);
+  const cleanupRef = useRef<(() => void) | null>(null);
+  const prevPointer = useRef<{ x: number; y: number; time: number } | null>(null);
 
   const stop = useCallback(() => {
-    if (handlerRef.current) {
-      window.removeEventListener("devicemotion", handlerRef.current);
-      handlerRef.current = null;
-    }
+    cleanupRef.current?.();
+    cleanupRef.current = null;
+    prevPointer.current = null;
     setIsCapturing(false);
   }, []);
 
-  const start = useCallback(() => {
-    setReadings([]);
-    setIsCapturing(true);
+  const startDeviceMotion = useCallback(() => {
+    setInputSource("device");
 
     const handler = (e: DeviceMotionEvent) => {
       const reading: MotionReading = {
@@ -48,19 +69,70 @@ export function useDeviceMotion(): DeviceMotionState {
       setReadings((prev) => [...prev, reading]);
     };
 
-    handlerRef.current = handler;
     window.addEventListener("devicemotion", handler);
+    cleanupRef.current = () => window.removeEventListener("devicemotion", handler);
   }, []);
+
+  const startPointerFallback = useCallback(() => {
+    setInputSource("pointer");
+
+    const handler = (e: PointerEvent) => {
+      const now = Date.now();
+      const prev = prevPointer.current;
+
+      if (prev) {
+        const dt = Math.max(now - prev.time, 1) / 1000; // seconds
+        const dx = e.clientX - prev.x;
+        const dy = e.clientY - prev.y;
+        const speed = Math.sqrt(dx * dx + dy * dy) / dt;
+
+        // Convert pointer deltas to acceleration-like values
+        const reading: MotionReading = {
+          timestamp: now,
+          acceleration: {
+            x: dx * PX_TO_ACC,
+            y: dy * PX_TO_ACC,
+            z: 9.8 + speed * 0.005, // baseline gravity + speed perturbation
+          },
+          rotation: {
+            alpha: Math.atan2(dy, dx) * (180 / Math.PI), // direction angle
+            beta: dy * 0.5, // vertical movement rate
+            gamma: dx * 0.5, // horizontal movement rate
+          },
+        };
+        setReadings((prev) => [...prev, reading]);
+      }
+
+      prevPointer.current = { x: e.clientX, y: e.clientY, time: now };
+    };
+
+    window.addEventListener("pointermove", handler);
+    cleanupRef.current = () => window.removeEventListener("pointermove", handler);
+  }, []);
+
+  const start = useCallback(async () => {
+    setReadings([]);
+    setIsCapturing(true);
+
+    if (hasNativeMotion()) {
+      const granted = await requestIOSPermission();
+      if (granted) {
+        startDeviceMotion();
+        return;
+      }
+      // Permission denied — fall through to pointer
+    }
+
+    startPointerFallback();
+  }, [startDeviceMotion, startPointerFallback]);
 
   const toJSON = useCallback(() => JSON.stringify(readings), [readings]);
 
   useEffect(() => {
     return () => {
-      if (handlerRef.current) {
-        window.removeEventListener("devicemotion", handlerRef.current);
-      }
+      cleanupRef.current?.();
     };
   }, []);
 
-  return { isCapturing, readings, start, stop, toJSON };
+  return { isCapturing, readings, inputSource, start, stop, toJSON };
 }

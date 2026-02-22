@@ -18,6 +18,8 @@ dependencies = [
     "heartlib @ git+https://github.com/HeartMuLa/heartlib.git",
     "ace-step @ git+https://github.com/ace-step/ACE-Step-1.5.git",
     "qwen-tts @ git+https://github.com/QwenLM/Qwen3-TTS.git",
+    "torchsde>=0.2.6",
+    "pydub>=0.25.1",
 ]
 
 [tool.uv]

@@ -9,17 +9,21 @@ interface AudioPlayerState {
   pause: () => void;
   seek: (time: number) => void;
   setSource: (url: string) => void;
+  audioElement: HTMLAudioElement | null;
 }
 
 export function useAudioPlayer(): AudioPlayerState {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
   useEffect(() => {
     const audio = new Audio();
+    audio.crossOrigin = "anonymous";
     audioRef.current = audio;
+    setAudioElement(audio);
 
     audio.addEventListener("timeupdate", () =>
       setCurrentTime(audio.currentTime)
@@ -61,5 +65,5 @@ export function useAudioPlayer(): AudioPlayerState {
 
   const progress = duration > 0 ? currentTime / duration : 0;
 
-  return { isPlaying, currentTime, duration, progress, play, pause, seek, setSource };
+  return { isPlaying, currentTime, duration, progress, play, pause, seek, setSource, audioElement };
 }

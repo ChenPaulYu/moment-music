@@ -1,25 +1,101 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import PageLayout from "@/components/layout/PageLayout";
 import OutputTypeSelector from "@/components/ui/OutputTypeSelector";
 import GenerateButton from "@/components/ui/GenerateButton";
+import GenerationSteps from "@/components/ui/GenerationSteps";
 import MaterialIcon from "@/components/ui/MaterialIcon";
 import VisualizerBars from "@/components/ui/VisualizerBars";
 import AnimateIn from "@/components/animation/AnimateIn";
 import { useAudioCapture } from "@/hooks/useAudioCapture";
+import { generateListen, getApiKeyStatus } from "@/lib/api";
+import { getEngineForOutput, getAlbumArtEnabled } from "@/lib/engine";
+import { getAllStylePrompts } from "@/lib/stylePrompts";
+import ApiKeyDialog from "@/components/ui/ApiKeyDialog";
 import { cn, formatTime } from "@/lib/utils";
 import type { OutputType } from "@/lib/types";
 
 export default function ListenMode() {
+  const navigate = useNavigate();
   const [outputType, setOutputType] = useState<OutputType>("instrumental");
   const maxDuration = 10;
   const { isRecording, elapsed, audioBlob, start, stop } = useAudioCapture(maxDuration);
   const progress = Math.min(elapsed / maxDuration, 1);
+
+  const [generating, setGenerating] = useState(false);
+  const [currentStep, setCurrentStep] = useState(-1);
+  const [error, setError] = useState<string | null>(null);
+  const [showKeyDialog, setShowKeyDialog] = useState(false);
+  const [missingKeys, setMissingKeys] = useState<string[]>([]);
+  const stepTimer = useRef<ReturnType<typeof setInterval>>();
+
+  const STEPS = [
+    "Analyzing audio",
+    "Interpreting mood",
+    "Generating audio",
+    "Rendering final mix",
+  ];
+
+  // Cleanup step timer on unmount
+  useEffect(() => () => clearInterval(stepTimer.current), []);
 
   const handleMicClick = async () => {
     if (isRecording) {
       stop();
     } else {
       await start();
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (generating || !audioBlob) return;
+
+    try {
+      const status = await getApiKeyStatus();
+      const missing: string[] = [];
+      if (!status.openai) missing.push("openai");
+      const engine = getEngineForOutput(outputType);
+      if (engine.includes("stable_audio_api") && !status.stability)
+        missing.push("stability");
+      if (missing.length > 0) {
+        setMissingKeys(missing);
+        setShowKeyDialog(true);
+        return;
+      }
+    } catch {
+      // continue
+    }
+
+    setGenerating(true);
+    setCurrentStep(0);
+    setError(null);
+
+    const startTime = Date.now();
+    stepTimer.current = setInterval(() => {
+      const elapsed = (Date.now() - startTime) / 1000;
+      const p = 2.9 * (1 - Math.exp(-elapsed / 60));
+      setCurrentStep(Math.min(Math.floor(p), 2));
+    }, 1000);
+
+    try {
+      const response = await generateListen({
+        audio: audioBlob,
+        outputType,
+        engine: getEngineForOutput(outputType),
+        generate_image: getAlbumArtEnabled(),
+        style_prompts: getAllStylePrompts(),
+      });
+      clearInterval(stepTimer.current);
+      setCurrentStep(STEPS.length);
+      await new Promise((r) => setTimeout(r, 500));
+      navigate("/player", { state: response });
+    } catch (err) {
+      clearInterval(stepTimer.current);
+      setCurrentStep(-1);
+      setError(
+        err instanceof Error ? err.message : "Generation failed. Try again."
+      );
+      setGenerating(false);
     }
   };
 
@@ -125,8 +201,34 @@ export default function ListenMode() {
 
       {/* Generate */}
       <AnimateIn delay={300}>
-        <GenerateButton icon="equalizer" className="mt-8" disabled={!audioBlob} />
+        <GenerateButton
+          icon={generating ? "progress_activity" : "equalizer"}
+          className="mt-8"
+          disabled={!audioBlob || generating}
+          onClick={handleGenerate}
+          loading={generating}
+          label={generating ? "Generating..." : "Generate Soundscape"}
+        />
+        {generating && (
+          <GenerationSteps steps={STEPS} currentStep={currentStep} />
+        )}
+        {error && (
+          <p className="mt-4 text-red-400 text-sm text-center max-w-md">
+            {error}
+          </p>
+        )}
       </AnimateIn>
+
+      {showKeyDialog && (
+        <ApiKeyDialog
+          missingKeys={missingKeys}
+          onClose={() => setShowKeyDialog(false)}
+          onSaved={() => {
+            setShowKeyDialog(false);
+            handleGenerate();
+          }}
+        />
+      )}
     </PageLayout>
   );
 }
