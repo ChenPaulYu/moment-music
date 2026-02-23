@@ -139,6 +139,8 @@ cloudflared tunnel --url http://localhost:5173
 
 This prints a public URL like `https://abc-xyz.trycloudflare.com`. Open it on your phone.
 
+> **Note:** The URL changes every time you restart the tunnel. To get a stable URL, set up a [named tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-remote-tunnel/) in your Cloudflare dashboard.
+
 > Press `Ctrl-b` then `d` to detach.
 
 Only one tunnel is needed — Vite's dev proxy forwards `/api`, `/audio`, and `/images` requests to the backend automatically. Vite is already configured to accept `.trycloudflare.com` hosts (see `vite.config.ts`).
