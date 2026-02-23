@@ -44,8 +44,9 @@ else
     # ffmpeg: narration audio mixing
     # sox: Qwen3-TTS audio processing
     # git-lfs: downloading AI model checkpoints
+    # tmux: terminal multiplexer for running services
     # cloudflared: HTTPS tunnel for mobile testing
-    for pkg in uv node ffmpeg sox git-lfs cloudflared; do
+    for pkg in uv node ffmpeg sox git-lfs tmux cloudflared; do
         if brew list "$pkg" &>/dev/null 2>&1 || command -v "$pkg" &>/dev/null; then
             echo "  ✓ $pkg"
         else

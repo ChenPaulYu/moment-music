@@ -36,6 +36,9 @@ brew install ffmpeg sox
 # Git Large File Storage (required for downloading AI models)
 brew install git-lfs && git lfs install
 
+# Terminal multiplexer (recommended — run services in detachable sessions)
+brew install tmux
+
 # HTTPS tunnel for mobile testing (optional — needed for Move/Listen modes on phone)
 brew install cloudflared
 ```
@@ -108,29 +111,72 @@ Then fill in your OpenAI API key in `backend/.env` and start the app:
 
 </details>
 
-## Mobile Testing with Cloudflare Tunnel
+## Running with tmux (Recommended)
 
-Move mode requires real device motion sensors, and Listen mode needs a microphone — so testing on a physical phone is essential. Use [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) to expose your local dev server over HTTPS (required for `DeviceMotionEvent` and `getUserMedia`).
+Use [tmux](https://github.com/tmux/tmux) to run the dev server and Cloudflare tunnel in named sessions you can detach from and resume anytime.
 
-1. **Install cloudflared:**
-   ```bash
-   brew install cloudflared        # macOS
-   # or see https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/
-   ```
+### Step 1 — Start the dev server
 
-2. **Start the app** (backend binds to `0.0.0.0`):
-   ```bash
-   ./dev.sh
-   ```
+```bash
+# Create a tmux session called "dev" and start the app
+tmux new-session -s dev
+./dev.sh
+```
 
-3. **Open a tunnel** (in a separate terminal):
-   ```bash
-   cloudflared tunnel --url http://localhost:5173
-   ```
+Once the servers are up (frontend on `:5173`, backend on `:8000`), detach from the session:
 
-   This prints a public URL like `https://abc-xyz.trycloudflare.com`. Open it on your phone.
+> Press `Ctrl-b` then `d` to detach.
+
+### Step 2 — Start the Cloudflare tunnel (for mobile testing)
+
+Move mode needs device motion sensors and Listen mode needs a microphone — so testing on a physical phone requires HTTPS. Cloudflare Tunnel exposes your local server over a public HTTPS URL.
+
+```bash
+# Create a tmux session called "cloudflare" and open the tunnel
+tmux new-session -s cloudflare
+cloudflared tunnel --url http://localhost:5173
+```
+
+This prints a public URL like `https://abc-xyz.trycloudflare.com`. Open it on your phone.
+
+> Press `Ctrl-b` then `d` to detach.
 
 Only one tunnel is needed — Vite's dev proxy forwards `/api`, `/audio`, and `/images` requests to the backend automatically. Vite is already configured to accept `.trycloudflare.com` hosts (see `vite.config.ts`).
+
+### Resuming sessions
+
+```bash
+# List all tmux sessions
+tmux ls
+
+# Re-attach to the dev server
+tmux attach -t dev
+
+# Re-attach to the cloudflare tunnel
+tmux attach -t cloudflare
+```
+
+### Stopping everything
+
+```bash
+# Attach to a session and press Ctrl-c to stop the process, then:
+exit            # closes the session
+
+# Or kill sessions directly from outside
+tmux kill-session -t dev
+tmux kill-session -t cloudflare
+```
+
+### Quick reference
+
+| Action | Command |
+|--------|---------|
+| New session | `tmux new-session -s <name>` |
+| Detach | `Ctrl-b` then `d` |
+| List sessions | `tmux ls` |
+| Re-attach | `tmux attach -t <name>` |
+| Kill session | `tmux kill-session -t <name>` |
+| Kill all sessions | `tmux kill-server` |
 
 ## Architecture
 
