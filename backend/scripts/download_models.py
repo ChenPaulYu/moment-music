@@ -86,8 +86,8 @@ def interactive_select() -> list[str]:
     for i, key in enumerate(keys, 1):
         info = MODELS[key]
         gated = " [GATED — needs HF_TOKEN]" if info.get("gated") else ""
-        dest = MODELS_DIR / key
-        installed = " ✓ (already downloaded)" if dest.exists() else ""
+        dest = MODELS_DIR / "checkpoints" if info["method"] == "acestep_cli" else MODELS_DIR / key
+        installed = " ✓ (already downloaded)" if dest.exists() and any(dest.iterdir()) else ""
         print(f"  [{i}] {info['name']:<40} {info['size']}{gated}{installed}")
         if info.get("note"):
             print(f"      {info['note']}")
@@ -177,7 +177,8 @@ def download_acestep(key: str, info: dict):
 
 def download_model(key: str) -> bool:
     info = MODELS[key]
-    dest = MODELS_DIR / key
+    # ACE-STEP saves to models/checkpoints/ (not models/ace_step/)
+    dest = MODELS_DIR / "checkpoints" if info["method"] == "acestep_cli" else MODELS_DIR / key
 
     print_header(f"Downloading: {info['name']} ({info['size']})")
 
