@@ -65,27 +65,35 @@ if [[ -f .env ]]; then
     echo "  ✓ .env file exists"
 else
     echo "  Creating .env from template..."
-    cat > .env << 'ENVEOF'
+    if [[ -f .env.example ]]; then
+        cp .env.example .env
+    else
+        cat > .env << 'ENVEOF'
 # Moment Music Backend Environment Variables
 # Copy this file and fill in your API keys
 
-# OpenAI (required for prompt generation)
+# Required
 OPENAI_API_KEY=
 
-# HuggingFace (required for gated models like Stable Audio Open)
-HF_TOKEN=
+# Optional — engine-specific
+STABILITY_API_KEY=          # for Stable Audio API (Cloud)
+HF_TOKEN=                   # for Stable Audio Open (HuggingFace, gated)
 
-# Stability AI (optional, for Stable Audio API cloud engine)
-STABILITY_API_KEY=
+# Optional — ACE-STEP LLM thinking (chain-of-thought before diffusion)
+ACE_STEP_THINKING=false     # true = better quality (+~34s), false = faster (DiT only)
 
-# --- Generation defaults (all overridable per request) ---
-# Engine: stable_audio_api | stable_audio_open | ace_step | qwen3_tts | heart_mula
+# Optional — HeartMuLa tuning
+HEARTMULA_DEVICE=           # auto-detected if not set
+HEARTMULA_DTYPE=float16
+HEARTMULA_LAZY_LOAD=true
+HEARTMULA_VERSION=3B
+
+# Optional — generation defaults (all overridable per request)
 DEFAULT_ENGINE=ace_step
-# Duration in seconds (default: 30)
 DEFAULT_DURATION=30
-# Output type: instrumental | song | narration
 DEFAULT_OUTPUT_TYPE=instrumental
 ENVEOF
+    fi
     echo "  ⚠ Created .env — please fill in your API keys"
 fi
 

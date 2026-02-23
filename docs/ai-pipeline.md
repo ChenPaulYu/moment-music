@@ -62,28 +62,22 @@ Engines are lazy-loaded and cached. After each generation, `unload()` is called 
 
 ### Model Downloads
 
-Local engines require model checkpoints in `backend/models/` (gitignored). Download before running the backend:
+Local engines require model checkpoints in `backend/models/` (gitignored). Use the download script:
 
 ```bash
-cd backend/models
-git lfs install
-
-# ACE-STEP (default engine) — required
-git clone https://huggingface.co/ACE-Step/Ace-Step1.5 ace_step
-ln -s ace_step checkpoints    # symlink expected by ACE-STEP loader
-
-# ACE-STEP 5Hz LM (optional, improves quality via chain-of-thought reasoning)
-git clone https://huggingface.co/ACE-Step/acestep-5Hz-lm-1.7B checkpoints/acestep-5Hz-lm-1.7B
-
-# Qwen3-TTS (narration voice) — required for Narration output
-git clone https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice qwen3_tts
-
-# HeartMuLa (lyrics-conditioned, needs 36GB+ VRAM) — optional
-git clone https://huggingface.co/HeartMuLa/HeartMuLaGen heart_mula
-
-# Stable Audio Open (needs HF_TOKEN) — optional
-git clone https://huggingface.co/stabilityai/stable-audio-open-1.0 stable_audio
+cd backend
+uv run python scripts/download_models.py              # interactive selection
+uv run python scripts/download_models.py --all         # download everything
+uv run python scripts/download_models.py ace_step      # just the default engine
+uv run python scripts/download_models.py --list        # list available models
 ```
+
+| Model Key | Name | Size | Notes |
+|-----------|------|------|-------|
+| `ace_step` | ACE-STEP 1.5 | ~4 GB | Default engine. Includes 5Hz LM (1.7B) for optional chain-of-thought reasoning. |
+| `qwen3_tts` | Qwen3-TTS 1.7B | ~3.5 GB | Required for Narration output |
+| `heart_mula` | HeartMuLa 3B + HeartCodec | ~6 GB | Lyrics-conditioned, needs 36GB+ VRAM |
+| `stable_audio` | Stable Audio Open 1.0 | ~2.5 GB | Gated — accept license at HuggingFace first, needs `HF_TOKEN` |
 
 Each engine checks availability at startup. Missing models make that engine unavailable (not an error).
 

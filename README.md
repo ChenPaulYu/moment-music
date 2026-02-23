@@ -42,29 +42,16 @@
 
 3. **Download AI models:**
 
-   Local music engines require model checkpoints in `backend/models/`. Download at least ACE-STEP (the default engine):
+   Local music engines require model checkpoints in `backend/models/`. Use the download script:
 
    ```bash
-   # ACE-STEP (default engine, ~4GB) — required
-   cd backend/models
-   git lfs install
-   git clone https://huggingface.co/ACE-Step/Ace-Step1.5 ace_step
-   # Create symlink expected by ACE-STEP loader
-   ln -s ace_step checkpoints
+   cd backend
+   uv run python scripts/download_models.py              # interactive selection
+   uv run python scripts/download_models.py ace_step     # just the default engine
+   uv run python scripts/download_models.py --all        # download everything
    ```
 
-   Optional engines:
-
-   ```bash
-   # HeartMuLa (lyrics-conditioned, ~6GB, needs 36GB+ VRAM to run)
-   git clone https://huggingface.co/HeartMuLa/HeartMuLaGen heart_mula
-
-   # Stable Audio Open (~4GB, needs HF_TOKEN)
-   git clone https://huggingface.co/stabilityai/stable-audio-open-1.0 stable_audio
-
-   # Qwen3-TTS (narration voice, ~4GB) — required for Narration output
-   git clone https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice qwen3_tts
-   ```
+   Available models: `ace_step` (~4GB, default, includes 5Hz LM), `qwen3_tts` (~3.5GB, narration voice), `heart_mula` (~6GB, needs 36GB+ VRAM), `stable_audio` (~2.5GB, gated, needs HF_TOKEN).
 
    > Models are gitignored. Each engine checks availability at startup — missing models simply make that engine unavailable.
 

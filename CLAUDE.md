@@ -119,22 +119,14 @@ cd frontend && npm install && cd ..
 
 **2. Download AI models** into `backend/models/` (gitignored):
 ```bash
-cd backend/models
-git lfs install
-
-# ACE-STEP (default engine) — required
-git clone https://huggingface.co/ACE-Step/Ace-Step1.5 ace_step
-ln -s ace_step checkpoints    # symlink expected by ACE-STEP loader
-
-# Qwen3-TTS (narration voice) — required for Narration output
-git clone https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice qwen3_tts
-
-# HeartMuLa (lyrics-conditioned, needs 36GB+ VRAM) — optional
-git clone https://huggingface.co/HeartMuLa/HeartMuLaGen heart_mula
-
-# Stable Audio Open (needs HF_TOKEN) — optional
-git clone https://huggingface.co/stabilityai/stable-audio-open-1.0 stable_audio
+cd backend
+uv run python scripts/download_models.py              # interactive selection
+uv run python scripts/download_models.py --all         # download everything
+uv run python scripts/download_models.py ace_step      # just the default engine
+uv run python scripts/download_models.py --list        # list available models
 ```
+
+Available models: `ace_step` (default, includes 5Hz LM), `qwen3_tts` (narration voice), `heart_mula` (lyrics-conditioned, 36GB+ VRAM), `stable_audio` (gated, needs HF_TOKEN).
 
 Each engine checks model availability at startup. Missing models make that engine unavailable (not an error).
 
