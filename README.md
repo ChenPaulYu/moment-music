@@ -42,15 +42,28 @@ brew install cloudflared
 
 You also need an **OpenAI API key** for mood interpretation and album art generation.
 
-### Setup
+### One-Key Setup
 
-Or run the automated setup script which handles uv, system deps, and .env:
+Clone and run the setup script — it installs everything (system deps, packages, .env, models):
 
 ```bash
-cd backend && bash scripts/setup.sh && cd ..
+git clone https://github.com/ChenPaulYu/moment-music.git
+cd moment-music
+bash setup.sh
 ```
 
-**Manual setup:**
+Then fill in your OpenAI API key in `backend/.env` and start the app:
+
+```bash
+./dev.sh               # opens http://localhost:5173
+```
+
+> Use `bash setup.sh --skip-models` to skip the model download and do it later.
+
+### Manual Setup
+
+<details>
+<summary>Step-by-step if you prefer manual control</summary>
 
 1. **Clone the repository:**
    ```bash
@@ -66,8 +79,6 @@ cd backend && bash scripts/setup.sh && cd ..
 
 3. **Download AI models:**
 
-   Local music engines require model checkpoints in `backend/models/`. Use the download script:
-
    ```bash
    cd backend
    uv run python scripts/download_models.py              # interactive selection
@@ -77,35 +88,25 @@ cd backend && bash scripts/setup.sh && cd ..
 
    Available models: `ace_step` (~4GB, default, includes 5Hz LM), `qwen3_tts` (~3.5GB, narration voice), `heart_mula` (~6GB, needs 36GB+ VRAM), `stable_audio` (~2.5GB, gated, needs HF_TOKEN).
 
-   > Models are gitignored. Each engine checks availability at startup — missing models simply make that engine unavailable.
-
 4. **Configure API keys:**
 
-   Create `backend/.env`:
-   ```env
-   OPENAI_API_KEY=sk-...
-   ```
-
-   Optional keys (for additional engines):
-   ```env
-   STABILITY_API_KEY=sk-...    # Stable Audio API (Cloud)
-   HF_TOKEN=hf_...             # Stable Audio Open (HuggingFace)
+   ```bash
+   cp backend/.env.example backend/.env
+   # Edit backend/.env and fill in your OPENAI_API_KEY
    ```
 
    API keys can also be configured in the browser at `/setup`.
 
 5. **Start the app:**
    ```bash
-   ./dev.sh
-   ```
-
-   Or run frontend and backend separately:
-   ```bash
-   ./run-backend.sh     # http://localhost:8000
-   ./run-frontend.sh    # http://localhost:5173
+   ./dev.sh                 # both frontend + backend
+   ./run-backend.sh         # http://localhost:8000
+   ./run-frontend.sh        # http://localhost:5173
    ```
 
 6. **Open** http://localhost:5173
+
+</details>
 
 ## Mobile Testing with Cloudflare Tunnel
 
