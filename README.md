@@ -19,18 +19,42 @@
 
 ## Quick Start
 
-### Prerequisites
+### Prerequisites (Fresh Mac Setup)
 
-- **Python 3.12+** with [uv](https://docs.astral.sh/uv/) package manager
-- **Node.js 18+** with npm
-- **OpenAI API key** (required for mood interpretation and album art)
-- **FFmpeg** (required for narration audio mixing)
+Install system-level dependencies via [Homebrew](https://brew.sh):
+
+```bash
+# Package manager for Python — never use pip
+brew install uv
+
+# Node.js runtime for the frontend
+brew install node
+
+# Audio processing (ffmpeg for narration mixing, sox for Qwen3-TTS)
+brew install ffmpeg sox
+
+# Git Large File Storage (required for downloading AI models)
+brew install git-lfs && git lfs install
+
+# HTTPS tunnel for mobile testing (optional — needed for Move/Listen modes on phone)
+brew install cloudflared
+```
+
+You also need an **OpenAI API key** for mood interpretation and album art generation.
 
 ### Setup
 
+Or run the automated setup script which handles uv, system deps, and .env:
+
+```bash
+cd backend && bash scripts/setup.sh && cd ..
+```
+
+**Manual setup:**
+
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/moment-music.git
+   git clone https://github.com/ChenPaulYu/moment-music.git
    cd moment-music
    ```
 
