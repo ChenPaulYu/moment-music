@@ -38,8 +38,7 @@ moment-music/
 │   ├── app/utils/     (audio mixing, helpers)
 │   ├── audio/         (generated audio, gitignored)
 │   └── models/        (AI model checkpoints, gitignored)
-├── docs/              (Design & architecture docs)
-└── refs/              (Reference materials, gitignored)
+└── docs/              (Design & architecture docs)
 ```
 
 **Frontend:** React + TypeScript + Vite on `http://localhost:5173`

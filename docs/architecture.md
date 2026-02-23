@@ -56,8 +56,7 @@ moment-music/
 ├── dev.sh                          Start both servers
 ├── run-backend.sh                  Start backend only
 ├── run-frontend.sh                 Start frontend only
-├── CLAUDE.md                       Developer guide
-└── refs/                           Reference materials (gitignored)
+└── CLAUDE.md                       Developer guide
 ```
 
 ## Data Flow

@@ -126,8 +126,7 @@ Only one tunnel is needed — Vite's dev proxy forwards `/api`, `/audio`, and `/
 moment-music/
 ├── frontend/     React + TypeScript + Vite + Tailwind
 ├── backend/      FastAPI + Python (uv)
-├── docs/         Design & architecture documentation
-└── refs/         Reference materials (gitignored)
+└── docs/         Design & architecture documentation
 ```
 
 **Frontend** serves the UI at `http://localhost:5173` with Vite's dev proxy forwarding `/api` requests to the backend.
