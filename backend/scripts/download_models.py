@@ -152,17 +152,23 @@ def download_huggingface(key: str, info: dict):
 
 
 def download_acestep(key: str, info: dict):
-    """Download ACE-STEP main model only (includes turbo DiT + 1.7B LM)."""
-    dest = MODELS_DIR / key
+    """Download ACE-STEP main model only (includes turbo DiT + 1.7B LM).
+
+    The acestep-download CLI --dir sets the checkpoints directory directly.
+    The engine passes project_root=MODELS_DIR to AceStepHandler, which
+    internally looks for {project_root}/checkpoints/acestep-v15-turbo/ etc.
+    So we pass --dir models/checkpoints/ to match.
+    """
+    dest = MODELS_DIR / "checkpoints"
     dest.mkdir(parents=True, exist_ok=True)
 
-    print(f"  Using acestep-download CLI (main model only) → {dest}")
+    print(f"  Using acestep-download CLI → {dest}")
     result = subprocess.run(
         ["uv", "run", "acestep-download", "--dir", str(dest)],
         cwd=str(MODELS_DIR.parent),
     )
     if result.returncode == 0:
-        print(f"  ✓ ACE-STEP main model saved to {dest}")
+        print(f"  ✓ ACE-STEP models saved to {dest}")
         return True
     else:
         print(f"  ✗ acestep-download failed (exit code {result.returncode})")
