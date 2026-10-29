@@ -139,10 +139,12 @@ export default function Setup() {
 
   // API key management state
   const [keyStatus, setKeyStatus] = useState<{
+    anthropic: boolean;
     openai: boolean;
     stability: boolean;
     huggingface: boolean;
-  }>({ openai: false, stability: false, huggingface: false });
+  }>({ anthropic: false, openai: false, stability: false, huggingface: false });
+  const [anthropicKey, setAnthropicKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [stabilityKey, setStabilityKey] = useState("");
   const [hfKey, setHfKey] = useState("");
@@ -319,6 +321,35 @@ export default function Setup() {
                 </p>
 
                 <div className="flex flex-col gap-3">
+                  {/* Anthropic */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span
+                        className={cn(
+                          "w-2 h-2 rounded-full",
+                          keyStatus.anthropic ? "bg-green-400" : "bg-red-400"
+                        )}
+                      />
+                      <span className="text-xs font-medium text-white/70">
+                        Anthropic
+                      </span>
+                    </div>
+                    <input
+                      type="password"
+                      placeholder={
+                        keyStatus.anthropic
+                          ? "••••••••"
+                          : "Enter Anthropic API key"
+                      }
+                      value={anthropicKey}
+                      onChange={(e) => {
+                        setAnthropicKey(e.target.value);
+                        setKeySaved(false);
+                      }}
+                      className="glass-input w-full rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+
                   {/* OpenAI */}
                   <div>
                     <div className="flex items-center gap-2 mb-1.5">
@@ -406,12 +437,16 @@ export default function Setup() {
 
                   <button
                     disabled={
-                      keySaving || (!openaiKey && !stabilityKey && !hfKey)
+                      keySaving ||
+                      (!anthropicKey && !openaiKey && !stabilityKey && !hfKey)
                     }
                     onClick={async () => {
                       setKeySaving(true);
                       try {
                         await saveApiKeys({
+                          ...(anthropicKey && {
+                            anthropic_api_key: anthropicKey,
+                          }),
                           ...(openaiKey && { openai_api_key: openaiKey }),
                           ...(stabilityKey && {
                             stability_api_key: stabilityKey,
@@ -419,6 +454,7 @@ export default function Setup() {
                           ...(hfKey && { hf_token: hfKey }),
                         });
                         setKeySaved(true);
+                        setAnthropicKey("");
                         setOpenaiKey("");
                         setStabilityKey("");
                         setHfKey("");
@@ -432,7 +468,7 @@ export default function Setup() {
                     }}
                     className={cn(
                       "self-end px-4 py-1.5 rounded-lg text-xs font-semibold transition-all",
-                      !openaiKey && !stabilityKey && !hfKey
+                      !anthropicKey && !openaiKey && !stabilityKey && !hfKey
                         ? "bg-[#131022] text-[#9b92c9]/50 cursor-not-allowed"
                         : "bg-primary/20 text-white border border-primary/40 hover:bg-primary/30 cursor-pointer"
                     )}
