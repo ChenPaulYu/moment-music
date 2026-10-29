@@ -76,7 +76,8 @@ HEARTMULA_VERSION=3B           # model version subfolder
 
 | Service | Purpose | Used In |
 |---------|---------|---------|
-| OpenAI GPT-5.2 | Image captioning, mood interpretation, prompt generation | All modes |
+| Claude Opus 5.5 | Image understanding, mood interpretation, prompt/lyrics/narration generation | All modes |
+| OpenAI gpt-image-1 / gpt-audio | Album art, ambient audio analysis | Album art (all modes), Listen |
 | ACE-STEP | Instrumental + vocal music generation | All output types |
 | HeartMuLa | Lyrics-conditioned music (3B model) | Song output (needs 36GB+ VRAM) |
 | Stable Audio Open | Diffusion-based instrumental generation | Instrumental output |
@@ -146,7 +147,11 @@ Each engine checks model availability at startup. Missing models make that engin
 Create `backend/.env` with:
 ```bash
 # Required
-OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...  # Claude Opus 5.5 (all text generation)
+OPENAI_API_KEY=sk-...         # album art + Listen audio analysis
+
+# Optional — Claude effort: low | medium (default) | high
+LLM_EFFORT=medium
 
 # Optional — engine-specific
 STABILITY_API_KEY=sk-...    # for Stable Audio API (Cloud)

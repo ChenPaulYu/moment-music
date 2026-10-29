@@ -187,6 +187,7 @@ export function getAudioUrl(filename: string): string {
 }
 
 export async function getApiKeyStatus(): Promise<{
+  anthropic: boolean;
   openai: boolean;
   stability: boolean;
   huggingface: boolean;
@@ -197,6 +198,7 @@ export async function getApiKeyStatus(): Promise<{
 }
 
 export async function saveApiKeys(keys: {
+  anthropic_api_key?: string;
   openai_api_key?: string;
   stability_api_key?: string;
   hf_token?: string;

@@ -12,11 +12,13 @@ interface ApiKeyDialogProps {
 }
 
 const KEY_LABELS: Record<string, string> = {
+  anthropic: "Anthropic",
   openai: "OpenAI",
   stability: "Stability AI",
 };
 
 const KEY_FIELDS: Record<string, string> = {
+  anthropic: "anthropic_api_key",
   openai: "openai_api_key",
   stability: "stability_api_key",
 };

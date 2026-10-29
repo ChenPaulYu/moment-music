@@ -307,7 +307,7 @@ The `GenerationSteps` component renders a vertical step list with animated trans
 ## Sequence Diagram
 
 ```
-User          Frontend              Backend               GPU Engine       OpenAI API
+User          Frontend              Backend               GPU Engine       Claude API
  │               │                     │                     │                │
  │  click        │                     │                     │                │
  │──────────────>│                     │                     │                │
@@ -319,7 +319,7 @@ User          Frontend              Backend               GPU Engine       OpenA
  │               │  GET /jobs/{id}     │  acquire semaphore  │                │
  │               │────────────────────>│─ ─ ─ ─ ─ ─ ─ ─ ─ >│                │
  │               │  { step: 0 }       │                     │                │
- │               │<────────────────────│  GPT-5.2 interpret  │                │
+ │               │<────────────────────│  Claude interpret   │                │
  │               │                     │─────────────────────────────────────>│
  │               │  GET /jobs/{id}     │  { mood, prompt }   │                │
  │               │────────────────────>│<─────────────────────────────────────│

@@ -115,6 +115,7 @@ def serve_image(filename: str):
 ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
 
 _KEY_MAP = {
+    "anthropic_api_key": "ANTHROPIC_API_KEY",
     "openai_api_key": "OPENAI_API_KEY",
     "stability_api_key": "STABILITY_API_KEY",
     "hf_token": "HF_TOKEN",
@@ -124,6 +125,7 @@ _KEY_MAP = {
 @app.get("/api/settings/keys/status")
 def api_keys_status():
     return {
+        "anthropic": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "openai": bool(os.environ.get("OPENAI_API_KEY")),
         "stability": bool(os.environ.get("STABILITY_API_KEY")),
         "huggingface": bool(os.environ.get("HF_TOKEN")),
@@ -131,6 +133,7 @@ def api_keys_status():
 
 
 class SaveKeysRequest(BaseModel):
+    anthropic_api_key: str | None = None
     openai_api_key: str | None = None
     stability_api_key: str | None = None
     hf_token: str | None = None

@@ -36,8 +36,9 @@ moment-music/
 │   │   │   │   └── qwen3_tts.py    Qwen3-TTS narration voice synthesis
 │   │   │   ├── jobs.py             Async job queue with concurrency control
 │   │   │   ├── prompt_generation.py  LLM-based prompt generation for all modes/outputs
-│   │   │   ├── vision.py           GPT-5.2 image captioning
-│   │   │   ├── image_generation.py GPT-5.2 album art generation
+│   │   │   ├── claude.py           Claude Opus 5.5 client + structured-output helper
+│   │   │   ├── vision.py           Claude image captioning
+│   │   │   ├── image_generation.py gpt-image-1 album art generation
 │   │   │   ├── weather.py          Open-Meteo weather data
 │   │   │   ├── geocoding.py        Nominatim reverse geocoding
 │   │   │   ├── audio_analysis.py   Audio analysis for Listen mode
@@ -76,12 +77,12 @@ Job Queue (max 1 concurrent, max 3 queued)
 │ Input Processing (mode-dependent)       │
 │                                         │
 │  Be:     Location → Geocode → Weather   │
-│  Write:  Text + Image → GPT-5.2 caption │
+│  Write:  Text + Image → Claude (inline) │
 │  Listen: Audio blob → analysis          │
 │  Move:   Motion JSON → pattern extract  │
 └─────────────────────────────────────────┘
     ↓ collected context
-LLM Prompt Generation (GPT-5.2 via OpenAI SDK)
+LLM Prompt Generation (Claude Opus 5.5 via Anthropic SDK)
     ↓ mood_keywords, summary, music_prompt (or lyrics + tags, or narration text)
     ↓
 ┌─────────────────────────────────────────┐
@@ -95,7 +96,7 @@ LLM Prompt Generation (GPT-5.2 via OpenAI SDK)
 │              engine (BG music) → mix    │
 └─────────────────────────────────────────┘
     ↓
-[Album Art Generation] (GPT-5.2 image gen, parallel with audio)
+[Album Art Generation] (gpt-image-1, parallel with audio)
     ↓
 Job completed → result stored
     ↓
@@ -219,7 +220,7 @@ Multipart form data:
 | POST | `/api/jobs/{id}/cancel` | Cancel a queued/running job |
 | GET | `/api/engines` | List available engines with status |
 | GET | `/api/settings/keys/status` | Check which API keys are configured |
-| POST | `/api/settings/keys` | Save API keys (OpenAI, Stability, HuggingFace) |
+| POST | `/api/settings/keys` | Save API keys (Anthropic, OpenAI, Stability, HuggingFace) |
 | GET | `/audio/{filename}` | Serve generated audio files |
 | GET | `/images/{filename}` | Serve generated album art images |
 
@@ -249,7 +250,8 @@ Multipart form data:
 **Backend:**
 - FastAPI (Python 3.12+)
 - uv (package manager — never use pip)
-- OpenAI SDK (GPT-5.2 for vision, reasoning, image generation)
+- Anthropic SDK (Claude Opus 5.5 for vision, reasoning)
+- OpenAI SDK (gpt-image-1 album art, gpt-audio Listen analysis)
 - PyTorch (local model inference)
 - uvicorn (ASGI server, `--loop asyncio`)
 
@@ -261,6 +263,7 @@ Multipart form data:
 - Qwen3-TTS (narration voice, local)
 
 **External APIs:**
-- OpenAI API (GPT-5.2)
+- Anthropic API (Claude Opus 5.5)
+- OpenAI API (gpt-image-1, gpt-audio)
 - Open-Meteo (weather, free, no key)
 - Nominatim/OSM (geocoding, free, no key)

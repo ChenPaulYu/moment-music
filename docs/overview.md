@@ -104,7 +104,7 @@ The output screen with:
 Collection of saved soundscapes with album art thumbnails.
 
 ### Setup
-Engine selection per output type + API key management (OpenAI, Stability AI, HuggingFace).
+Engine selection per output type + API key management (Anthropic, OpenAI, Stability AI, HuggingFace).
 
 ### Prompts
 Style prompt customization with global defaults and per-mode overrides (Write, Listen, Move, Be).

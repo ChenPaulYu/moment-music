@@ -143,6 +143,7 @@ export default function ListenMode() {
     try {
       const status = await getApiKeyStatus();
       const missing: string[] = [];
+      if (!status.anthropic) missing.push("anthropic");
       if (!status.openai) missing.push("openai");
       const engine = getEngineForOutput(outputType);
       if (engine.includes("stable_audio_api") && !status.stability)

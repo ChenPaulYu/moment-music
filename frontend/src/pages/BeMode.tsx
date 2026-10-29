@@ -177,7 +177,8 @@ export default function BeMode() {
     try {
       const status = await getApiKeyStatus();
       const missing: string[] = [];
-      if (!status.openai) missing.push("openai");
+      if (!status.anthropic) missing.push("anthropic");
+      if (getAlbumArtEnabled() && !status.openai) missing.push("openai");
       const engine = getEngineForOutput(outputType);
       if (engine.includes("stable_audio_api") && !status.stability)
         missing.push("stability");

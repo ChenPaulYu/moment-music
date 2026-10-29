@@ -20,12 +20,12 @@ Each mode captures a different dimension of a moment.
 6. Navigated to Moment Player on completion
 
 ### Backend Processing
-1. If image provided → GPT-5.2 captioning (objective visual description)
+1. If image provided → passed inline to Claude Opus 5.5 with the journal text
 2. Journal text + image caption → LLM prompt generation (per output type)
 3. For instrumental: prompt → music engine
 4. For song: lyrics + tags → ACE-STEP or HeartMuLa
 5. For narration: narration text → Qwen3-TTS, BG prompt → engine, then FFmpeg mix
-6. Album art generated in parallel via GPT-5.2 image generation
+6. Album art generated in parallel via OpenAI gpt-image-1
 
 ### UI Elements
 - Textarea (journal entry)

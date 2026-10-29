@@ -43,7 +43,7 @@ brew install tmux
 brew install cloudflared
 ```
 
-You also need an **OpenAI API key** for mood interpretation and album art generation.
+You also need an **Anthropic API key** (Claude Opus 5.5 for mood interpretation, prompts, lyrics and narration) and an **OpenAI API key** (album art and Listen mode audio analysis).
 
 ### One-Key Setup
 
@@ -55,7 +55,7 @@ cd moment-music
 bash setup.sh
 ```
 
-Then fill in your OpenAI API key in `backend/.env` and start the app:
+Then fill in your Anthropic and OpenAI API keys in `backend/.env` and start the app:
 
 ```bash
 ./dev.sh               # opens http://localhost:5173
@@ -95,7 +95,7 @@ Then fill in your OpenAI API key in `backend/.env` and start the app:
 
    ```bash
    cp backend/.env.example backend/.env
-   # Edit backend/.env and fill in your OPENAI_API_KEY
+   # Edit backend/.env and fill in ANTHROPIC_API_KEY and OPENAI_API_KEY
    ```
 
    API keys can also be configured in the browser at `/setup`.
@@ -224,7 +224,9 @@ Users can customize AI generation style at `/prompts`:
 
 | Variable | Required | Purpose |
 |----------|----------|---------|
-| `OPENAI_API_KEY` | Yes | GPT-5.2 for mood interpretation + album art |
+| `ANTHROPIC_API_KEY` | Yes | Claude Opus 5.5 for mood interpretation, prompts, lyrics, narration |
+| `OPENAI_API_KEY` | Yes | Album art (gpt-image-1) + Listen audio analysis (gpt-audio) |
+| `LLM_EFFORT` | No | Claude effort: `low`, `medium` (default), `high` |
 | `STABILITY_API_KEY` | No | Stable Audio API (cloud engine) |
 | `HF_TOKEN` | No | Stable Audio Open (HuggingFace model) |
 | `DEFAULT_ENGINE` | No | Default engine (`ace_step`) |
@@ -270,7 +272,7 @@ cd frontend && npx tsc --noEmit
 ## Tech Stack
 
 - **Frontend:** React 18, TypeScript, Vite, Tailwind CSS v3.4, React Router v6
-- **Backend:** FastAPI, Python 3.12+, uv, OpenAI SDK, PyTorch
-- **AI:** GPT-5.2 (vision/reasoning/image gen), ACE-STEP, HeartMuLa, Stable Audio, Qwen3-TTS
+- **Backend:** FastAPI, Python 3.12+, uv, Anthropic SDK, OpenAI SDK, PyTorch
+- **AI:** Claude Opus 5.5 (vision/reasoning), gpt-image-1 (album art), gpt-audio (Listen analysis), ACE-STEP, HeartMuLa, Stable Audio, Qwen3-TTS
 - **APIs:** Open-Meteo (weather), Nominatim (geocoding) — both free, no keys needed
 - **Design:** Dark mode, glass morphism, Space Grotesk, Material Symbols icons
