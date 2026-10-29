@@ -10,7 +10,7 @@ How moment inputs are transformed into music through the AI services.
 User Input (text, image, audio, motion, location)
     ↓
 [Input Processing Layer]
-  ├── Image → GPT-5.2 Vision → caption (Write mode)
+  ├── Image → passed inline to Claude (Write mode)
   ├── Location → Nominatim geocoding → Open-Meteo weather (Be mode)
   ├── Audio → audio analysis (Listen mode)
   ├── Motion → pattern extraction (Move mode)
@@ -19,13 +19,13 @@ User Input (text, image, audio, motion, location)
 [Context Assembly]
   All processed inputs merged into unified context
     ↓
-[LLM Prompt Generation] (GPT-5.2 via OpenAI SDK)
+[LLM Prompt Generation] (Claude Opus 5.5 via Anthropic SDK)
   Per-output-type prompt generation:
   ├── Instrumental → mood_keywords, summary, suggested_prompt
   ├── Song → mood_keywords, summary, lyrics, music_tags
   └── Narration → mood_keywords, summary, narration_text, background_music_prompt
     ↓
-[Album Art Generation] (GPT-5.2 image gen, runs in parallel with audio)
+[Album Art Generation] (OpenAI gpt-image-1, runs in parallel with audio)
   Input: mood_keywords, summary → 1024x1024 cover image
     ↓
 [Audio Generation] (engine-dependent)
@@ -128,9 +128,14 @@ HeartMuLa supports env vars for easy hardware migration:
 
 ## Service Details
 
-### OpenAI GPT-5.2 — Vision + Reasoning + Image Generation
+### Claude Opus 5.5 — Vision + Reasoning
 
-GPT-5.2 handles three tasks in the pipeline:
+Claude handles all text generation through one helper, `services/claude.py`:
+
+- Structured outputs (`messages.parse` with the Pydantic models) so every response validates
+- Effort set by `LLM_EFFORT` (`low` | `medium` default | `high`); Opus 5.5 always thinks, effort sets how much
+- Uploaded images are re-encoded as JPEG at max 1568px on the long edge (the size Claude reads) before sending
+- Server-side refusal fallback (`fallbacks: "default"`) retries a safety decline on Anthropic's recommended model
 
 #### 1. Image Captioning (`services/vision.py`)
 
@@ -161,7 +166,11 @@ Moods: [mood1, mood2, mood3] | BPM: [optional] | Additional: [texture, style]
 
 **Style prompts** are passed through from the frontend. Resolution order: mode override → global → built-in default.
 
-#### 3. Album Art Generation (`services/image_generation.py`)
+### OpenAI — Album Art + Listen Audio Analysis
+
+Claude has no image output or audio input, so these stay on OpenAI.
+
+#### Album Art Generation (`services/image_generation.py`)
 
 - Input: mood_keywords + summary → art direction prompt
 - Output: 1024x1024 PNG album cover
@@ -229,7 +238,11 @@ All API keys stored in `backend/.env`:
 
 ```env
 # Required
-OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...   # Claude Opus 5.5 (all text generation)
+OPENAI_API_KEY=sk-...          # album art + Listen audio analysis
+
+# Optional — Claude effort: low | medium (default) | high
+LLM_EFFORT=medium
 
 # Optional — engine-specific
 STABILITY_API_KEY=sk-...       # for Stable Audio API (Cloud)
