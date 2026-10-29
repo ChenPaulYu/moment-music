@@ -1,18 +1,7 @@
-import base64
-
-from openai import AsyncOpenAI
 from pydantic import BaseModel
 
+from app.services import claude
 from app.utils.helpers import load_prompt
-
-_client = None
-
-
-def _get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        _client = AsyncOpenAI()  # reads OPENAI_API_KEY from env
-    return _client
 
 
 def _inject_style(system_prompt: str, style_prompts: dict | None, *keys: str) -> str:
@@ -111,15 +100,7 @@ async def interpret_weather_to_music_prompt(
     base_prompt = load_prompt("weather_music_base.md").replace("{duration}", str(duration))
     user_prompt = _build_weather_context(weather, feeling) + "\n\n" + base_prompt
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=WeatherInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, WeatherInterpretation)
 
 
 async def interpret_weather_to_narration(
@@ -131,15 +112,7 @@ async def interpret_weather_to_narration(
     base_prompt = load_prompt("weather_narration_base.md")
     user_prompt = _build_weather_context(weather, feeling) + "\n\n" + base_prompt + _duration_hint(duration, "narration")
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=NarrationInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, NarrationInterpretation)
 
 
 async def interpret_weather_to_song(
@@ -151,32 +124,17 @@ async def interpret_weather_to_song(
     base_prompt = load_prompt("weather_song_base.md")
     user_prompt = _build_weather_context(weather, feeling) + "\n\n" + base_prompt + _duration_hint(duration, "song")
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=SongInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, SongInterpretation)
 
 
 # --- Write mode interpretation functions ---
 
 
-def _build_write_user_message(
-    text: str, base_prompt: str, image_bytes: bytes | None = None, image_mime: str | None = None
-) -> str | list:
+def _build_write_user_message(text: str, base_prompt: str, image_bytes: bytes | None = None) -> str | list:
     """Build the user message for Write mode, with optional inline image."""
     user_text = f"\nJournal Entry:\n{text}\n\n{base_prompt}"
-    if image_bytes and image_mime:
-        b64 = base64.b64encode(image_bytes).decode("utf-8")
-        data_uri = f"data:{image_mime};base64,{b64}"
-        return [
-            {"type": "text", "text": user_text},
-            {"type": "image_url", "image_url": {"url": data_uri}},
-        ]
+    if image_bytes:
+        return [claude.image_block(image_bytes), {"type": "text", "text": user_text}]
     return user_text
 
 
@@ -188,17 +146,9 @@ async def interpret_write_to_music_prompt(
     system_prompt = load_prompt("write_music_system.md")
     system_prompt = _inject_style(system_prompt, style_prompts, "overall_mood", "music_prompt_style")
     base_prompt = load_prompt("write_music_base.md").replace("{duration}", str(duration))
-    user_content = _build_write_user_message(text, base_prompt, image_bytes, image_mime)
+    user_content = _build_write_user_message(text, base_prompt, image_bytes)
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        response_format=WeatherInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_content, WeatherInterpretation)
 
 
 async def interpret_write_to_narration(
@@ -209,17 +159,9 @@ async def interpret_write_to_narration(
     system_prompt = load_prompt("write_narration_system.md")
     system_prompt = _inject_style(system_prompt, style_prompts, "overall_mood", "narration_style", "bg_music_style")
     base_prompt = load_prompt("write_narration_base.md") + _duration_hint(duration, "narration")
-    user_content = _build_write_user_message(text, base_prompt, image_bytes, image_mime)
+    user_content = _build_write_user_message(text, base_prompt, image_bytes)
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        response_format=NarrationInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_content, NarrationInterpretation)
 
 
 async def interpret_write_to_song(
@@ -230,17 +172,9 @@ async def interpret_write_to_song(
     system_prompt = load_prompt("write_song_system.md")
     system_prompt = _inject_style(system_prompt, style_prompts, "overall_mood", "lyrics_style")
     base_prompt = load_prompt("write_song_base.md") + _duration_hint(duration, "song")
-    user_content = _build_write_user_message(text, base_prompt, image_bytes, image_mime)
+    user_content = _build_write_user_message(text, base_prompt, image_bytes)
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_content},
-        ],
-        response_format=SongInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_content, SongInterpretation)
 
 
 # --- Listen mode interpretation functions ---
@@ -259,15 +193,7 @@ async def interpret_listen_to_music_prompt(
     base_prompt = load_prompt("listen_music_base.md").replace("{duration}", str(duration))
     user_prompt = _build_listen_context(audio_description) + "\n\n" + base_prompt
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=WeatherInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, WeatherInterpretation)
 
 
 async def interpret_listen_to_narration(
@@ -279,15 +205,7 @@ async def interpret_listen_to_narration(
     base_prompt = load_prompt("listen_narration_base.md")
     user_prompt = _build_listen_context(audio_description) + "\n\n" + base_prompt + _duration_hint(duration, "narration")
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=NarrationInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, NarrationInterpretation)
 
 
 async def interpret_listen_to_song(
@@ -299,15 +217,7 @@ async def interpret_listen_to_song(
     base_prompt = load_prompt("listen_song_base.md")
     user_prompt = _build_listen_context(audio_description) + "\n\n" + base_prompt + _duration_hint(duration, "song")
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=SongInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, SongInterpretation)
 
 
 # --- Move mode interpretation functions ---
@@ -326,15 +236,7 @@ async def interpret_move_to_music_prompt(
     base_prompt = load_prompt("move_music_base.md").replace("{duration}", str(duration))
     user_prompt = _build_move_context(motion_summary) + "\n\n" + base_prompt
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=WeatherInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, WeatherInterpretation)
 
 
 async def interpret_move_to_narration(
@@ -346,15 +248,7 @@ async def interpret_move_to_narration(
     base_prompt = load_prompt("move_narration_base.md")
     user_prompt = _build_move_context(motion_summary) + "\n\n" + base_prompt + _duration_hint(duration, "narration")
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=NarrationInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, NarrationInterpretation)
 
 
 async def interpret_move_to_song(
@@ -366,12 +260,4 @@ async def interpret_move_to_song(
     base_prompt = load_prompt("move_song_base.md")
     user_prompt = _build_move_context(motion_summary) + "\n\n" + base_prompt + _duration_hint(duration, "song")
 
-    response = await _get_client().beta.chat.completions.parse(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        response_format=SongInterpretation,
-    )
-    return response.choices[0].message.parsed
+    return await claude.parse(system_prompt, user_prompt, SongInterpretation)

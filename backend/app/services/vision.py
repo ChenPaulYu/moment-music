@@ -1,37 +1,17 @@
-import base64
+from pydantic import BaseModel
 
-from openai import AsyncOpenAI
-
+from app.services import claude
 from app.utils.helpers import load_prompt
 
-_client = None
 
-
-def _get_client() -> AsyncOpenAI:
-    global _client
-    if _client is None:
-        _client = AsyncOpenAI()  # reads OPENAI_API_KEY from env
-    return _client
+class ImageCaption(BaseModel):
+    caption: str
 
 
 async def caption_image(image_bytes: bytes, mime_type: str) -> str:
-    """Generate an objective caption of the uploaded image using GPT-5.2 vision."""
+    """Generate an objective caption of the uploaded image using Claude vision."""
     system_prompt = load_prompt("write_caption_system.md")
-    b64 = base64.b64encode(image_bytes).decode("utf-8")
-    data_uri = f"data:{mime_type};base64,{b64}"
+    user_content = [claude.image_block(image_bytes), {"type": "text", "text": "Describe this image."}]
 
-    response = await _get_client().chat.completions.create(
-        model="gpt-5.2",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": "Describe this image."},
-                    {"type": "image_url", "image_url": {"url": data_uri}},
-                ],
-            },
-        ],
-        max_completion_tokens=300,
-    )
-    return response.choices[0].message.content.strip()
+    result = await claude.parse(system_prompt, user_content, ImageCaption, effort="low")
+    return result.caption.strip()
